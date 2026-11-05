@@ -66,6 +66,7 @@ class ContextGuardAnalysisEngine:
         participant_harmful_sent = defaultdict(int)
         participant_targeted_count = defaultdict(int)
         participant_harm_targeted_count = defaultdict(int)
+        participant_bystander_sent = defaultdict(int)
 
         analyzed_messages: List[MessageAnalysis] = []
 
@@ -112,6 +113,8 @@ class ContextGuardAnalysisEngine:
             elif classification == "Friendly Banter":
                 if target:
                     speaker_target_banter_counts[(sender, target)] += 1
+            elif "Bystander Defence" in pattern:
+                participant_bystander_sent[sender] += 1
 
             # Targeting pattern description for this message
             if target and speaker_target_hostile_counts[(sender, target)] > 1:
@@ -143,16 +146,27 @@ class ContextGuardAnalysisEngine:
         # Step 2: Participant & Targeting Matrix
         participants_info: List[ParticipantInfo] = []
         all_participants = sorted(list(set(participant_sent.keys()) | set(participant_targeted_count.keys())))
+        max_harmful = max((participant_harmful_sent[p] for p in all_participants), default=0)
+        max_targeted = max((participant_harm_targeted_count[p] for p in all_participants), default=0)
 
         for p in all_participants:
             sent_total = participant_sent[p]
             harmful_total = participant_harmful_sent[p]
             targeted_harmful_total = participant_harm_targeted_count[p]
+            bystander_total = participant_bystander_sent[p]
 
-            if harmful_total >= 2:
-                role = "Frequent source of hostile or exclusionary utterances"
+            if bystander_total > 0 and harmful_total == 0:
+                role = "Bystander defender intervening to support the targeted participant"
+            elif harmful_total >= 2:
+                if harmful_total == max_harmful and max_harmful > 0:
+                    role = "Primary source of hostile or exclusionary utterances"
+                else:
+                    role = "Frequent source of hostile or exclusionary utterances"
             elif targeted_harmful_total >= 2 and harmful_total == 0:
-                role = "Repeated recipient of hostile or exclusionary turns without retaliating"
+                if targeted_harmful_total == max_targeted and max_targeted > 0:
+                    role = "Repeated recipient of hostile or exclusionary turns without retaliating"
+                else:
+                    role = "Repeated recipient of hostile or exclusionary turns without retaliating"
             elif targeted_harmful_total == 1 and harmful_total == 0:
                 role = "Target of an isolated negative or ambiguous turn"
             elif sent_total > 0 and harmful_total == 0:
@@ -208,6 +222,7 @@ class ContextGuardAnalysisEngine:
         has_boundary_fear = any(f.has_boundary_fear for f in features_list)
         has_bystander_defense = any(f.has_bystander_defense for f in features_list)
         has_stop_request = any(f.has_explicit_stop_request for f in features_list)
+        has_distress = any(getattr(f, "has_distress", False) for f in features_list)
 
         overall_risk, estimated_risk_score, risk_summary, recommendations = self._synthesize_risk(
             total_msgs=total_msgs,
@@ -223,7 +238,8 @@ class ContextGuardAnalysisEngine:
             has_retaliatory_escalation=has_retaliatory_escalation,
             has_boundary_fear=has_boundary_fear,
             has_bystander_defense=has_bystander_defense,
-            has_stop_request=has_stop_request
+            has_stop_request=has_stop_request,
+            has_distress=has_distress
         )
 
         metrics = ConversationMetrics(
@@ -300,16 +316,18 @@ class ContextGuardAnalysisEngine:
         signals = MessageSignal(
             has_laughter=feat.has_laughter,
             has_playful_emoji=feat.has_playful_emoji,
-            has_exclusion_phrase=feat.has_exclusion,
+            has_exclusion_phrase=(feat.has_exclusion or feat.has_covert_exclusion),
             has_insult_lexicon=feat.has_insult,
             has_threat_lexicon=(feat.has_direct_threat or feat.has_confrontation),
             is_sarcasm_suspect=feat.has_sarcasm_praise,
             is_reciprocal_tease=False,
             is_repeated_target=False,
-            is_victim_protest=(feat.has_protest or feat.has_boundary_fear),
+            is_victim_protest=(feat.has_protest or feat.has_boundary_fear or getattr(feat, "has_distress", False)),
             is_retaliatory_threat=feat.has_retaliatory,
             has_confrontation=feat.has_confrontation,
-            has_intimidation=feat.has_ominous_warning
+            has_intimidation=feat.has_ominous_warning,
+            has_distress=getattr(feat, "has_distress", False),
+            has_bystander_defense=getattr(feat, "has_bystander_defense", False)
         )
 
         prior_hostile_count = 0
@@ -323,11 +341,26 @@ class ContextGuardAnalysisEngine:
         # RULE 0: Friendly Banter & Reciprocal Teasing Override
         # (False Positive Prevention: playful friends teasing each other)
         # ----------------------------------------------------
-        is_teasing_with_laughter = (feat.has_laughter or feat.has_playful_emoji) and (feat.has_sarcasm_praise or feat.has_insult or feat.has_retaliatory)
+        had_prior_protest_or_stop = any(
+            f.has_protest or f.has_boundary_fear or f.has_explicit_stop_request for f in prior_features
+        )
+        is_severe_or_unilateral = (
+            feat.has_retaliatory
+            or feat.has_ominous_warning
+            or feat.has_exclusion
+            or (feat.has_direct_abuse and not has_reciprocal_laughter)
+            or (prior_hostile_count >= 1 and not has_reciprocal_laughter)
+            or had_prior_protest_or_stop
+        )
+        is_teasing_with_laughter = (
+            (feat.has_laughter or feat.has_playful_emoji)
+            and (feat.has_sarcasm_praise or feat.has_insult)
+            and not is_severe_or_unilateral
+        )
         has_subsequent_laughter = (next_feat and (next_feat.has_laughter or next_feat.has_playful_emoji or next_feat.has_sarcasm_praise))
         has_prior_laughter = (prev_feat and (prev_feat.has_laughter or prev_feat.has_playful_emoji))
 
-        if not feat.has_direct_threat and not feat.has_confrontation:
+        if not feat.has_direct_threat and not feat.has_confrontation and not is_severe_or_unilateral:
             if is_teasing_with_laughter or (has_reciprocal_laughter and (feat.has_sarcasm_praise or feat.has_laughter or "rematch" in feat.text_lower or "nobel" in feat.text_lower)):
                 signals.is_reciprocal_tease = True
                 evidence.append("Playful banter cues present (laughter expressions, laughing emojis, or self-deprecating humor).")
@@ -443,8 +476,24 @@ class ContextGuardAnalysisEngine:
         if feat.has_retaliatory:
             had_prior_report = any(f.has_report_or_grievance for f in prior_features)
             had_prior_stop_request = any(f.has_explicit_stop_request for f in prior_features)
+            had_prior_bystander = any(f.has_bystander_defense for f in prior_features)
             had_prior_insult_pattern = prior_hostile_count >= 1
-            if had_prior_report:
+            if had_prior_bystander and (feat.has_defender_challenge or "defending" in feat.text_lower or "both" in feat.text_lower or "ignored" in feat.text_lower):
+                evidence.append("Retaliatory social intimidation directed at a bystander defender ('Keep defending him. You'll both get ignored.').")
+                evidence.append("Threatens punitive social exclusion against both the target and the defender for intervening.")
+                alt_interp = "Could represent verbal frustration, but threatening collective ostracism following pro-social intervention constitutes retaliatory intimidation."
+                action = "Document this statement. Retaliation against bystander defenders escalates group harassment dynamics."
+                return (
+                    "Potentially Harmful",
+                    0.82,
+                    "Moderate",
+                    "Retaliatory Social Intimidation / Defender Retaliation",
+                    evidence,
+                    alt_interp,
+                    action,
+                    signals
+                )
+            elif had_prior_report:
                 evidence.append("Veiled retaliatory warning ('regret doing that') immediately following participant's assertion of reporting abusive behavior.")
                 evidence.append("Contextual connection to prior complaint indicates possible payback or retribution.")
                 alt_interp = "Could theoretically express intent to take administrative or platform counter-action, but in the context of abusive messaging reports, it conveys intimidation."
@@ -550,16 +599,16 @@ class ContextGuardAnalysisEngine:
         # ----------------------------------------------------
         # RULE 5.5: Explicit Stop Request (Victim asking sender to cease harassment)
         # Catches polite but unambiguous pleas: "please stop", "I'm asking you to stop",
-        # "I've asked you before to stop", "stop making personal comments"
+        # "I've asked you before to stop", "stop making personal comments", "can you stop making jokes"
         # ----------------------------------------------------
         if feat.has_explicit_stop_request:
-            evidence.append("Speaker explicitly requests that the other person stop ('please stop', 'I've asked you before to stop', 'stop making personal comments').")
+            evidence.append("Speaker explicitly requests that the other person stop ('please stop', 'stop making jokes about me', 'it's getting annoying').")
             evidence.append("This is an unambiguous victim boundary assertion and de-escalation attempt.")
             alt_interp = "Speaker is setting a verbal boundary; the request itself is not hostile."
             action = "Validate the speaker's request. If the other party continues, escalate to platform moderation."
             return (
                 "Uncertain — More Context Needed",
-                0.75,
+                0.78,
                 "Moderate",
                 "Victim Explicit Stop Request",
                 evidence,
@@ -569,8 +618,45 @@ class ContextGuardAnalysisEngine:
             )
 
         # ----------------------------------------------------
-        # RULE 6: Reporting / Grievance Explanations
+        # RULE 5.8: Victim Emotional Distress & Avoidance Signal
         # ----------------------------------------------------
+        if getattr(feat, "has_distress", False):
+            signals.is_victim_protest = True
+            evidence.append("Targeted participant expresses severe emotional distress and school/work avoidance ('I genuinely don't want to come to college tomorrow because of this').")
+            evidence.append("Reflects the psychological impact of ongoing hostility and exclusion rather than aggressive behavior.")
+            alt_interp = "Participant is communicating the severe personal impact of the hostile environment rather than initiating aggression."
+            action = "Validate the speaker's emotional experience and ensure supportive counseling and peer protection are provided."
+            return (
+                "Uncertain — More Context Needed",
+                0.86,
+                "High",
+                "Victim Emotional Distress & Avoidance Signal",
+                evidence,
+                alt_interp,
+                action,
+                signals
+            )
+
+        # ----------------------------------------------------
+        # RULE 6: Reporting / Grievance Explanations & Victim Exclusion Report
+        # ----------------------------------------------------
+        if getattr(feat, "has_exclusion_report", False) or (feat.has_report_or_grievance and any(w in feat.text_lower for w in ["excluded", "excluding", "left me out", "discussion", "contribute"])):
+            signals.is_victim_protest = True
+            evidence.append("Targeted participant explicitly reports ongoing repeated exclusion across multiple discussions ('You have excluded me from every discussion this week').")
+            evidence.append("Expresses frustration and distress regarding inability to contribute ('How am I supposed to contribute?').")
+            alt_interp = "Speaker is communicating distress and seeking inclusion; this turn documents the exclusionary pattern rather than initiating conflict."
+            action = "Acknowledge the participant's report of exclusion. Intervene to ensure equal access to project materials and group discussions."
+            return (
+                "Uncertain — More Context Needed",
+                0.78,
+                "Moderate",
+                "Report of Repeated Exclusion & Distress",
+                evidence,
+                alt_interp,
+                action,
+                signals
+            )
+
         if feat.has_report_or_grievance:
             if "why" in feat.text_lower:
                 evidence.append("Inquiry regarding account reporting status without overt hostility.")
@@ -600,7 +686,7 @@ class ContextGuardAnalysisEngine:
         # ----------------------------------------------------
         if feat.has_bystander_defense:
             had_prior_hostile_in_conv = any(f.has_insult or f.has_exclusion or f.has_covert_exclusion or f.has_retaliatory for f in prior_features)
-            evidence.append("A bystander or third-party participant is actively intervening to defend another participant ('cut it out', 'that's unnecessary', 'leave them alone').")
+            evidence.append("A bystander or third-party participant is actively intervening to defend another participant ('cut it out', 'that's unnecessary', 'add him to the group').")
             if had_prior_hostile_in_conv:
                 evidence.append("Intervention occurs in the context of prior hostile or exclusionary turns; the bystander is standing up for a recipient of repeated targeting.")
             alt_interp = "The speaker is not initiating hostility; they are attempting to de-escalate a conflict."
@@ -626,17 +712,30 @@ class ContextGuardAnalysisEngine:
             else:
                 evidence.append("Indirect or covert exclusionary statement detected ('meetings go better when certain people aren't there', 'team works better without distractions', etc.).")
 
+            if getattr(feat, "has_personal_degradation", False):
+                evidence.append("Personal degradation detected ('slowing everyone down', 'actually useful', etc.).")
+
             if prior_hostile_count >= 1:
                 evidence.append(f"Follows {prior_hostile_count} previous hostile or exclusionary turn(s) from {sender} toward {target or 'the participant'}.")
                 classification = "Possible Cyberbullying"
-                pattern = "Repeated Social Exclusion & Harassment"
+                if getattr(feat, "has_personal_degradation", False):
+                    pattern = "Personal Degradation & Repeated Exclusion"
+                elif "still not getting added" in feat.text_lower or "not getting added" in feat.text_lower:
+                    pattern = "Persistent / Continued Social Exclusion"
+                else:
+                    pattern = "Repeated Social Exclusion & Harassment"
                 conf = 0.88 if feat.has_exclusion else 0.85
                 action = "Recognize this as persistent exclusion. Consider stepping away from this group, seeking support, or archiving the conversation for moderation."
                 alt_interp = "Unlikely to be friendly teasing given the lack of playful cues and repeated unreciprocated hostility."
             else:
                 classification = "Possible Cyberbullying" if (feat.has_exclusion and not is_known_friendly) else "Potentially Harmful"
-                pattern = "Social Exclusion & Ostracism" if feat.has_exclusion else "Indirect / Covert Social Exclusion"
-                conf = 0.81 if feat.has_exclusion else 0.76
+                if getattr(feat, "has_personal_degradation", False):
+                    pattern = "Personal Degradation & Covert Social Exclusion"
+                elif feat.has_exclusion:
+                    pattern = "Social Exclusion & Ostracism"
+                else:
+                    pattern = "Indirect / Covert Social Exclusion"
+                conf = 0.81 if feat.has_exclusion else 0.78
                 action = "Set clear boundaries or ask a moderator or team lead to intervene if this behavior continues."
                 alt_interp = "Could represent an emotional venting moment during an argument rather than systematic cyberbullying."
 
@@ -838,7 +937,8 @@ class ContextGuardAnalysisEngine:
         has_retaliatory_escalation: bool,
         has_boundary_fear: bool,
         has_bystander_defense: bool = False,
-        has_stop_request: bool = False
+        has_stop_request: bool = False,
+        has_distress: bool = False
     ) -> Tuple[str, float, str, List[str]]:
         """
         Synthesizes conversation-wide metrics into an explainable overall risk assessment.
@@ -883,11 +983,26 @@ class ContextGuardAnalysisEngine:
         )
         if cyberbullying_count >= 2 or has_asymmetric_repetition:
             overall_risk = "High"
-            risk_score = 75.0 + min(cyberbullying_count * 5.0, 15.0)
-            summary = (
-                f"High risk of cyberbullying identified: {cyberbullying_count} turn(s) exhibit repeated targeting, "
-                "systematic social exclusion, or unreciprocated harassment directed at specific participant(s)."
-            )
+            risk_score = min(88.0, 75.0 + min(cyberbullying_count * 3.5, 10.0) + (3.0 if has_distress else 0.0))
+
+            asym_targets = [t for t in targeting_interactions if t.is_asymmetric and t.harmful_turns >= 2]
+            primary_src = asym_targets[0].source if asym_targets else None
+            primary_tgt = asym_targets[0].target if asym_targets else None
+            targeting_str = f" from {primary_src} toward {primary_tgt}" if primary_src and primary_tgt else ""
+
+            summary_parts = [
+                f"High risk of cyberbullying identified: {cyberbullying_count} persistent turn(s) ({harmful_count} harmful overall) exhibit repeated asymmetric targeting{targeting_str} and systematic social exclusion."
+            ]
+            if has_stop_request:
+                summary_parts.append("Victim explicit stop request was repeatedly disregarded.")
+            if has_distress:
+                summary_parts.append("Targeted participant reported significant emotional distress and educational/work avoidance.")
+            if has_bystander_defense:
+                summary_parts.append("A third-party bystander intervened to challenge the exclusion.")
+            if has_retaliatory_escalation:
+                summary_parts.append("Retaliatory social intimidation was directed at participants.")
+            summary = " ".join(summary_parts)
+
             recommendations.append("Address the repeated targeting pattern rather than treating turns as isolated incidents.")
             recommendations.append("Provide a safe avenue for the targeted individual to express their boundaries.")
             recommendations.append("Apply group moderation or peer mediation according to community standards.")

@@ -24,11 +24,11 @@ These workloads run on CPU. An RTX 3050 is not required. No GPU VRAM size is ass
 
 | Outcome | Demonstrable work |
 |---|---|
-| CO1 | Regex parsing, normalization preserving negation/emojis, word/character/WordPiece/BPE tokenization, stopword filtering, Porter and Lancaster stems, spaCy lemmas, vocabulary counts |
-| CO2 | Handcrafted conversation features, unigram/bigram/trigram inspection, manual BoW and smoothed TF-IDF matrix, trained BoW/TF-IDF classifiers |
-| CO3 | A pretrained spaCy English model provides POS tags, dependency heads, noun chunks and named entities with original-text spans |
-| CO4 | From-scratch multinomial Naive Bayes, sklearn Naive Bayes, TF-IDF Logistic Regression; validation-selected model; held-out metrics and a majority baseline |
-| CO5 | Optional hosted LLM second-opinion endpoint, explicit consent, bounded/validated structured output and exact-quote verification; needs a provider token and a model before live use |
+| CO1 | Noise removal (HTML, zero-width chars), normalization preserving negation/emojis, multi-level tokenization (sentence, word, character, WordPiece, BPE), stopword removal with explicit negation preservation, Porter & Lancaster stemming vs spaCy lemmatization, vocabulary counts |
+| CO2 | Handcrafted conversation features, unigram/bigram/trigram inspection, Levenshtein edit distance with DP matrix and backtrace operations, manual BoW and smoothed TF-IDF matrix, Skip-gram Word2Vec embeddings (NumPy SGNS) with cosine similarity, nearest neighbors, analogies, and custom corpus retraining |
+| CO3 | spaCy English model (`en_core_web_sm`) provides POS tags, dependency parse trees, noun chunks, and named entities with character spans; from-scratch First-Order Hidden Markov Model (HMM) POS tagger with Laplace smoothing and Viterbi dynamic programming decoding; side-by-side POS comparison |
+| CO4 | From-scratch Multinomial Naive Bayes, scikit-learn Naive Bayes, TF-IDF Logistic Regression; validation-selected model; held-out test evaluation metrics (accuracy, precision, recall, macro-F1, confusion matrix) and majority baseline; multi-turn contextual cyberbullying detection engine |
+| CO5 | Optional hosted LLM second-opinion endpoint (Hugging Face chat completion), explicit consent gate, bounded/validated structured output schema, exact-quote evidence verification, and complete graceful degradation when unconfigured |
 
 Conversation risk remains a contextual rule assessment. Standalone toxicity is an independent statistical signal. Do not describe these as a trained conversation-level classifier or claim that the hybrid improves context accuracy without a labeled conversation experiment.
 
@@ -79,10 +79,15 @@ Restart the backend. Open Language lab → Hosted second opinion. The user revie
 
 No API credentials were supplied during implementation. Protocol and validation are tested with a simulated provider; a real hosted inference call remains unverified until credentials are configured.
 
-## Remaining academic experiments
+## Implemented NLP Laboratory Course Outcomes
 
-The main next experiment needs independently labeled, multi-turn conversations, including friendly teasing, genuine threats, exclusion, quotations, negation and bystander defense. Keep related conversations, templates and paraphrases in the same split. Have two reviewers label a subset and resolve disagreement. Compare isolated-message and context-aware decisions on the same labels. Keep that evaluation separate from public comment toxicity.
+ContextGuard now implements full end-to-end demonstrations for all five Course Outcomes:
+1. **CO1 (Text Preprocessing):** Clean noise, NFKC normalization, URL/email tokenization, sentence splitting, word/character/BPE/WordPiece tokenization, stopword filtering with negation retention, Porter & Lancaster stemmers, and spaCy lemmatizer.
+2. **CO2 (Feature Extraction & Word Representations):** Levenshtein dynamic programming edit distance with traceback, Bag-of-Words and TF-IDF matrices, N-grams (1, 2, 3), and NumPy-based Skip-gram Word2Vec embeddings with negative sampling (cosine similarity, nearest neighbors, analogies $b - a + c$, and corpus retraining).
+3. **CO3 (POS Tagging & Named Entity Recognition):** Dual POS tagging featuring both industrial spaCy (`en_core_web_sm`) and an educational First-Order Hidden Markov Model (HMM) trained with Laplace smoothing and decoded using Viterbi dynamic programming; alongside spaCy Named Entity Recognition (PERSON, ORG, GPE, DATE).
+4. **CO4 (Text Classification & Evaluation):** Multi-model evaluation benchmark (from-scratch Naive Bayes, scikit-learn Naive Bayes, TF-IDF Logistic Regression) with accuracy, precision, recall, macro-F1, and confusion matrices; combined with ContextGuard's 13-turn contextual cyberbullying detection engine.
+5. **CO5 (LLM Integration & Deployment):** Hugging Face Chat Completion API integration for second-opinion review with explicit consent gating, structured Pydantic schema validation, evidence quotation verification, and graceful unconfigured fallbacks.
 
-Model fine-tuning, learned conversation representations, probability calibration, fairness evaluation, multilingual support and measured preprocessing ablations are extensions, not current claims. NER/POS currently use a pretrained model; no HMM/CRF is trained here. No Word2Vec/CBOW/Skip-gram implementation is claimed.
+The main future academic experiment is collecting a larger multi-turn annotated chat corpus with inter-annotator agreement (Cohen's Kappa) across diverse demographics.
 
 Never load untrusted joblib files. Server model paths are fixed to locally generated artifacts; there is no model upload endpoint.

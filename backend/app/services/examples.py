@@ -180,6 +180,40 @@ PRELOADED_EXAMPLES: List[ExampleConversation] = [
             "recognized as pro-social bystander defense rather than conflict initiation."
         )
     ),
+    ExampleConversation(
+        id="college-project-exclusion",
+        title="College Project Exclusion & Retaliatory Intimidation",
+        category="Cyberbullying / High Risk",
+        conversation=(
+            "Aarav: Guys, are we creating a group for the college project?\n"
+            "Rohan: Already created one. Everyone important is there.\n"
+            "Aarav: What about me? I'm part of the project too.\n"
+            "Rohan: We thought it would be easier without you slowing everyone down.\n"
+            "Karan: Bro, that's unnecessary. Aarav is literally assigned to our team.\n"
+            "Rohan: Nobody asked you, Karan.\n"
+            "Aarav: Can you stop making jokes about me? It's getting annoying.\n"
+            "Rohan: Relax, nobody wants you out. We're just saying the group works better without you.\n"
+            "Aarav: You have excluded me from every discussion this week. How am I supposed to contribute?\n"
+            "Rohan: Maybe if you were actually useful, we'd include you.\n"
+            "Karan: This isn't funny anymore. Add him to the group and share the project files.\n"
+            "Rohan: Keep defending him. You'll both get ignored.\n"
+            "Aarav: I genuinely don't want to come to college tomorrow because of this.\n"
+            "Karan: Aarav, I'm sorry. I'll make sure you get the project material.\n"
+            "Rohan: Do whatever you want. He's still not getting added to my group."
+        ),
+        relationship="College Classmates",
+        setting="Project Group Chat",
+        description=(
+            "A multi-turn student group interaction demonstrating personal degradation ('slowing everyone down', 'actually useful'), "
+            "deliberate exclusion from required academic collaboration ('still not getting added to my group'), victim boundary assertion ('stop making jokes about me'), "
+            "bystander defense by Karan, retaliatory social intimidation ('Keep defending him. You'll both get ignored'), and severe victim distress ('don't want to come to college tomorrow')."
+        ),
+        expected_classification_summary=(
+            "Classified as HIGH RISK. Rohan's persistent unreciprocated exclusionary attacks (turns 2, 4, 8, 10, 15), defender silencing (turn 6), "
+            "and retaliatory intimidation (turn 12) establish systematic cyberbullying against Aarav. Karan is recognized as a bystander defender, "
+            "and Aarav's emotional distress signal (turn 13) is recognized as evidence of impact rather than aggression."
+        )
+    ),
 ]
 
 def get_examples() -> List[ExampleConversation]:

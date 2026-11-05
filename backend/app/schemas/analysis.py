@@ -23,6 +23,8 @@ class MessageSignal(BaseModel):
     is_retaliatory_threat: bool = False
     has_confrontation: bool = False
     has_intimidation: bool = False
+    has_distress: bool = False
+    has_bystander_defense: bool = False
 
 class MessageAnalysis(BaseModel):
     id: int

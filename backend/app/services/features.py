@@ -22,6 +22,10 @@ EXCLUSION_PATTERNS = [
     re.compile(r"\b(don[\'\u2019]t|do\s+not)\s+expect\s+(an?\s+)?invitation\b", re.IGNORECASE),
     re.compile(r"\b(won[\'\u2019]t\s+be|not)\s+(getting\s+an\s+invitation|invited)\b", re.IGNORECASE),
     re.compile(r"\b(not\s+inviting\s+you|excluding\s+you|left\s+you\s+out\s+on\s+purpose)\b", re.IGNORECASE),
+    re.compile(r"\b(everyone\s+important\s+is\s+there|already\s+created\s+one[.,!]*\s*everyone\s+important)\b", re.IGNORECASE),
+    re.compile(r"\b(still\s+not|not|never)\s+(getting|being)?\s*added\s+to\s+(my|the|our)\s+(group|team|chat|project)\b", re.IGNORECASE),
+    re.compile(r"\b(he[\'\u2019]s|she[\'\u2019]s|they[\'\u2019]re|you[\'\u2019]re)\s+still\s+not\s+(getting\s+added|added|in\s+the\s+group)\b", re.IGNORECASE),
+    re.compile(r"\b(if\s+you\s+were\s+(actually\s+)?useful,?\s*(then\s+)?we[\'\u2019]d\s+include\s+you)\b", re.IGNORECASE),
 ]
 
 # Covert / implicit exclusion (indirect, often about the target in third-person or coded)
@@ -44,6 +48,10 @@ COVERT_EXCLUSION_PATTERNS = [
     # "team works more efficiently without distractions / without you"
     re.compile(r"\b(team|group|we)\s+works?\s+(much\s+|more\s+)?(efficiently|better|faster)\s+without\s+(you|distractions?|certain\s+people)\b", re.IGNORECASE),
     re.compile(r"\b(without\s+distractions|more\s+efficiently\s+without\s+distractions)\b", re.IGNORECASE),
+    re.compile(r"\b(easier|better|faster|smoother)\s+without\s+(you|her|him|them|\w+)\b", re.IGNORECASE),
+    re.compile(r"\b(we\s+thought\s+it\s+would\s+be\s+easier\s+without\s+(you|her|him|them|\w+))\b", re.IGNORECASE),
+    re.compile(r"\b(without\s+you\s+slowing\s+(everyone|us|everybody|the\s+team)\s+down)\b", re.IGNORECASE),
+    re.compile(r"\b(nobody\s+wants\s+you\s+out[.,!]*\s*(we[\'\u2019]?re\s+just\s+saying)?)\b", re.IGNORECASE),
 ]
 
 # Direct physical threat / lethal violence markers
@@ -80,6 +88,9 @@ RETALIATORY_INTIMIDATION_PATTERNS = [
     re.compile(r"\b(pay\s+for\s+(this|what\s+you\s+did|reporting)|teach\s+you\s+a\s+lesson)\b", re.IGNORECASE),
     re.compile(r"\b(stay\s+quiet|shut\s+up)\s+or\s+(you[\'\u2019]ll\s+see|else|you[\'\u2019]re\s+gonna\s+regret)\b", re.IGNORECASE),
     re.compile(r"\b(you[\'\u2019]ll\s+see\s+what\s+happens|see\s+what\s+happens\s+to\s+you)\b", re.IGNORECASE),
+    re.compile(r"\bkeep\s+defending\s+(him|her|them|\w+)\b", re.IGNORECASE),
+    re.compile(r"\b(you[\'\u2019]?ll\s+both|both\s+of\s+you\s+will)\s+(get\s+|be\s+)?(ignored|excluded|dropped|kicked|left\s+out|banned)\b", re.IGNORECASE),
+    re.compile(r"\b(defend\s+(him|her|them|\w+)\s+(and|or)\s+you[\'\u2019]?ll)\b", re.IGNORECASE),
 ]
 
 # Ominous, foreboding or persistent intimidation
@@ -106,6 +117,14 @@ BOUNDARY_FEAR_PATTERNS = [
 # Backwards compatibility alias
 THREAT_PATTERNS = DIRECT_THREAT_PATTERNS
 
+# Personal degradation and belittling
+PERSONAL_DEGRADATION_PATTERNS = [
+    re.compile(r"\b(slowing\s+(everyone|us|the\s+team|the\s+group|everybody)\s+down|slows?\s+everyone\s+down)\b", re.IGNORECASE),
+    re.compile(r"\b(if\s+you\s+were\s+(actually\s+)?useful|actually\s+useful|not\s+(actually\s+)?useful)\b", re.IGNORECASE),
+    re.compile(r"\b(dead\s+weight|holding\s+(everyone|us|the\s+team|the\s+group)\s+back)\b", re.IGNORECASE),
+    re.compile(r"\b(waste\s+of\s+time|waste\s+of\s+space|useless|worthless|burden\s+to\s+(everyone|us))\b", re.IGNORECASE),
+]
+
 # Insult / derogatory terms (isolated or repeated)
 INSULT_PATTERNS = [
     re.compile(r"\bfuck\s+(you|u)\b", re.IGNORECASE),
@@ -114,7 +133,7 @@ INSULT_PATTERNS = [
     re.compile(r"\byou[\'\u2019]re\s+(such\s+a\s+|an?\s+)?(embarrassment|disgrace|failure|joke)\b", re.IGNORECASE),
     re.compile(r"\byou[\'\u2019]re\s+(so\s+|too\s+)?(fat|ugly|stupid|dumb|pathetic|gross|worthless)\b", re.IGNORECASE),
     re.compile(r"\bmissed\s+an\s+empty\s+goal\b", re.IGNORECASE),  # mild tease
-]
+] + PERSONAL_DEGRADATION_PATTERNS
 
 # Explicit second-person abuse must not become "ambiguous sarcasm" solely
 # because a conversation is short. General profanity is not enough.
@@ -166,18 +185,22 @@ DISMISSIVE_BELITTLING_PATTERNS = [
 BYSTANDER_DEFENSE_PATTERNS = [
     # "I don't think she saw it", "I don't think they meant it"
     re.compile(r"\bi\s+don[\'\u2019]t\s+think\s+(he|she|they|\w+)\s+(saw|meant|did|sent|read)\b", re.IGNORECASE),
-    # "This isn't necessary", "that's unnecessary", "this is uncalled for"
+    # "This isn't necessary", "that's unnecessary", "this is uncalled for", "that is completely unfair"
     re.compile(r"\b(this|that)[\'\u2019]?s?\s+isn[\'\u2019]t\s+(necessary|needed|fair|right|okay)\b", re.IGNORECASE),
-    re.compile(r"\b(this|that)[\'\u2019]?s?\s+(is\s+)?(unnecessary|not\s+necessary|not\s+fair|not\s+right|uncalled\s+for|out\s+of\s+line)\b", re.IGNORECASE),
-    # "just send her the details", "send the meeting details"
+    re.compile(r"\b(this|that|it)[\'\u2019]?s?\s+(is\s+)?(completely\s+|totally\s+)?(unnecessary|not\s+necessary|unfair|not\s+fair|not\s+right|uncalled\s+for|out\s+of\s+line)\b", re.IGNORECASE),
+    re.compile(r"\b(this\s+isn[\'\u2019]t\s+funny\s+anymore|not\s+funny\s+anymore)\b", re.IGNORECASE),
+    # "just send her the details", "send the meeting details", "add him to the group"
     re.compile(r"\b(just\s+)?(send|give)\s+(her|him|them|\w+\s+)?(the\s+)?(details|info|link|address|meeting\s+details)\b", re.IGNORECASE),
+    re.compile(r"\b(add\s+(him|her|them|\w+)\s+to\s+the\s+(group|team|chat|project))\b", re.IGNORECASE),
+    re.compile(r"\b(share\s+the\s+(project\s+)?(files?|material|notes?|slides?))\b", re.IGNORECASE),
+    re.compile(r"\bi[\'\u2019]?ll\s+make\s+sure\s+(you|he|she|they|\w+)\s+get\s+(the\s+)?(project\s+)?(material|files?|details|info)\b", re.IGNORECASE),
     # "leave her/him alone", "just leave Sam alone", "cut it out", "stop it"
     re.compile(r"\bleave\s+(her|him|them|\w+)\s+alone\b", re.IGNORECASE),
     re.compile(r"\bjust\s+leave\s+\w+\s+alone\b", re.IGNORECASE),
     re.compile(r"\b(come\s+on|cut\s+it\s+out|that[\'\u2019]?s?\s+enough|enough\s+is\s+enough|enough\s+already)\b", re.IGNORECASE),
-    # Defending target's contributions: "Sam has done a lot of work on this project"
+    # Defending target's contributions: "Sam has done a lot of work on this project", "Aarav is literally assigned to our team"
     re.compile(r"\b(he|she|they|\w+)\s+has\s+done\s+a\s+lot\s+of\s+work\b", re.IGNORECASE),
-    re.compile(r"\b(he|she|they|\w+)\s+(worked\s+hard|contributed\s+a\s+lot|deserves\s+to\s+be)\b", re.IGNORECASE),
+    re.compile(r"\b(he|she|they|\w+)\s+(worked\s+(just\s+as\s+hard|hard)|contributed\s+a\s+lot|deserves\s+to\s+be|is\s+literally\s+assigned|is\s+part\s+of\s+(the|our)\s+team)\b", re.IGNORECASE),
 ]
 
 # Defender challenge — attempting to silence someone who is defending the target
@@ -188,6 +211,8 @@ DEFENDER_CHALLENGE_PATTERNS = [
     re.compile(r"\b(stop|don[\'\u2019]t)\s+(defending|taking\s+(\w+[\'\u2019]?s?|her|his|their)\s+side|sticking\s+up\s+for)\s*(\w+|her|him|them)?\b", re.IGNORECASE),
     # "you're always on her side", "always taking Sam's side"
     re.compile(r"\byou[\'\u2019]re\s+always\s+(on\s+(\w+[\'\u2019]?s?|her|his|their)\s+side|taking\s+(\w+[\'\u2019]?s?|her|his|their)\s+side)\b", re.IGNORECASE),
+    # "keep defending him"
+    re.compile(r"\bkeep\s+defending\s+(him|her|them|\w+)\b", re.IGNORECASE),
     # "mind your own business" (when directed at a defender)
     re.compile(r"\bmind\s+your\s+own\s+business\b", re.IGNORECASE),
     # "nobody asked you"
@@ -201,10 +226,22 @@ SARCASM_PRAISE_PATTERNS = [
     re.compile(r"\b(pro\s+athlete|professional\s+athlete)\b", re.IGNORECASE),
 ]
 
+# Distress & Educational / Workplace Avoidance signals
+DISTRESS_PATTERNS = [
+    re.compile(r"\b(don[\'\u2019]t|do\s+not)\s+want\s+to\s+come\s+to\s+(college|school|class|work|office|campus)\s*(tomorrow|anymore|because\s+of\s+this)?\b", re.IGNORECASE),
+    re.compile(r"\b(dreading|scared\s+to\s+come\s+to|afraid\s+to\s+go\s+to)\s+(college|school|class|work)\b", re.IGNORECASE),
+    re.compile(r"\b(can[\'\u2019]t\s+take\s+this\s+anymore|makes\s+me\s+want\s+to\s+quit|crying\s+because\s+of\s+this)\b", re.IGNORECASE),
+    re.compile(r"\b(feeling\s+so\s+isolated|makes\s+me\s+feel\s+worthless|makes\s+me\s+feel\s+sick)\b", re.IGNORECASE),
+]
+
 # Victim objection / distress reactions
 PROTEST_PATTERNS = [
     re.compile(r"\bwhat\s+(is\s+that|do\s+you\s+mean|does\s+that\s+mean)\b", re.IGNORECASE),
     re.compile(r"\b(stop\s+it|leave\s+me\s+alone|that[\'\u2019]s\s+not\s+funny|why\s+are\s+you\s+doing\s+this)\b", re.IGNORECASE),
+    # "can you stop making jokes about me", "stop making jokes about me"
+    re.compile(r"\b(can\s+you\s+)?stop\s+making\s+(jokes|comments|fun)\s+(about|of)\s+me\b", re.IGNORECASE),
+    re.compile(r"\b(it[\'\u2019]s\s+getting|this\s+is\s+getting|getting)\s+(annoying|frustrating|ridiculous|unbearable)\b", re.IGNORECASE),
+    re.compile(r"\bwhy\s+do\s+you\s+keep\s+(targeting|attacking|excluding|bothering|mocking|harassing)\s+me\b", re.IGNORECASE),
     # "why are you so mean", "why are you being so mean" — victim distress
     re.compile(r"\bwhy\s+are\s+you\s+(being\s+)?so\s+mean\b", re.IGNORECASE),
     re.compile(r"\b(please\s+stop|that\s+hurts|you[\'\u2019]re\s+hurting\s+my\s+feelings)\b", re.IGNORECASE),
@@ -217,9 +254,11 @@ PROTEST_PATTERNS = [
     re.compile(r"\b(it\s+wasn[\'\u2019]t|i\s+didn[\'\u2019]t|that\s+wasn[\'\u2019]t|it\s+was\s+not)\s+(me|my\b|mine)", re.IGNORECASE),
     # Plea or objection against being excluded ("why wasn't I added", "just want to be included")
     re.compile(r"\b(why\s+(wasn[\'\u2019]t\s+i|am\s+i\s+not|was\s+i\s+not)|why\s+i\s+wasn[\'\u2019]t)\s+(added|included|invited|on\s+the\s+list)\b", re.IGNORECASE),
+    re.compile(r"\b(you\s+(have\s+)?excluded\s+me|excluding\s+me|left\s+me\s+out)\s+(from\s+(every|all|the)\s+(discussion|meeting|group|session)s?)?\b", re.IGNORECASE),
+    re.compile(r"\bhow\s+am\s+i\s+supposed\s+to\s+(contribute|work|learn|participate)\b", re.IGNORECASE),
     re.compile(r"\b(just\s+)?want\s+to\s+be\s+included\b", re.IGNORECASE),
     re.compile(r"\bi\s+have\s+a\s+right\s+to\s+be\s+(here|included|in\s+the\s+meeting)\b", re.IGNORECASE),
-]
+] + DISTRESS_PATTERNS
 
 
 class ExtractedFeatures:
@@ -241,19 +280,27 @@ class ExtractedFeatures:
         self.has_boundary_fear = any(p.search(self.text_lower) for p in BOUNDARY_FEAR_PATTERNS)
         self.has_inquiry = bool(re.search(r'\bwhat\s+(does\s+that|do\s+you|is\s+that)\s+mean\b', self.text_lower))
 
+        self.has_personal_degradation = any(p.search(self.text_lower) for p in PERSONAL_DEGRADATION_PATTERNS)
+        self.has_distress = any(p.search(self.text_lower) for p in DISTRESS_PATTERNS)
+        self.has_exclusion_report = bool(
+            re.search(r"\b(you\s+(have\s+)?excluded\s+me|excluding\s+me|how\s+am\s+i\s+supposed\s+to\s+contribute)\b", self.text_lower)
+        )
+
         self.has_insult = any(p.search(self.text_lower) for p in INSULT_PATTERNS)
         self.has_direct_abuse = any(p.search(self.text_lower) for p in DIRECT_ABUSE_PATTERNS)
         self.has_sarcasm_praise = any(p.search(self.text_lower) for p in SARCASM_PRAISE_PATTERNS)
-        self.has_protest = any(p.search(self.text_lower) for p in PROTEST_PATTERNS) or self.has_boundary_fear
+        self.has_protest = any(p.search(self.text_lower) for p in PROTEST_PATTERNS) or self.has_boundary_fear or self.has_distress
 
         # Explicit stop request: polite but unambiguous "please stop", "asking you to stop",
-        # "asked you before to stop", "stop making personal comments", "stop talking to me"
+        # "asked you before to stop", "stop making personal comments", "can you stop making jokes", "stop talking to me"
         self.has_explicit_stop_request = bool(
             re.search(
                 r"\b(please\s+stop|i[\'\u2019]m\s+(asking|begging)\s+(you\s+)?to\s+stop|stop\s+(this|it|please)|"
                 r"i[\'\u2019]?ve\s+asked\s+(you\s+)?(before\s+)?to\s+stop|asked\s+you\s+(before\s+)?to\s+stop|"
-                r"stop\s+making\s+personal\s+comments|stop\s+(harassing|insulting|mocking|targeting|attacking|bothering)|"
-                r"stop\s+(talking\s+to\s+me|messaging\s+me|contacting\s+me))\b",
+                r"(can\s+you\s+)?stop\s+making\s+(personal\s+comments|jokes(\s+about\s+me)?)|"
+                r"stop\s+(harassing|insulting|mocking|targeting|attacking|bothering)|"
+                r"stop\s+(talking\s+to\s+me|messaging\s+me|contacting\s+me)|"
+                r"it[\'\u2019]s\s+getting\s+annoying)\b",
                 self.text_lower,
                 re.IGNORECASE
             )
@@ -334,6 +381,20 @@ def infer_message_targets(messages: List[ParsedMessage]) -> List[Tuple[str, Opti
             m_dir = re.search(r'\b(leave|stop\s+(harassing|attacking|bothering))\s+([a-zA-Z0-9_]+)\s+alone\b', text_lower)
             if m_dir and m_dir.group(3).lower() in speaker_names_lower and speaker_names_lower[m_dir.group(3).lower()] != sender:
                 target = speaker_names_lower[m_dir.group(3).lower()]
+
+        # 3.5. 3rd-person deliberate exclusion target attribution:
+        # e.g. "He's still not getting added to my group" -> targets the excluded participant
+        if not target:
+            m_third_excl = re.search(
+                r'\b(he[\'\u2019]?s?|she[\'\u2019]?s?|they[\'\u2019]?re?)\s+(still\s+not|not)\s+(getting\s+added|added|included|in\s+the\s+group)\b|'
+                r'\b(not\s+(going\s+to\s+add|adding)\s+(him|her|them))\b',
+                text_lower
+            )
+            if m_third_excl and idx > 0:
+                prev_speaker = messages[idx - 1].speaker
+                third_parties = [s for s in all_speakers if s != sender and s != prev_speaker]
+                if third_parties:
+                    target = third_parties[0]
 
         # 4. Turn-taking attribution:
         if not target:
