@@ -10,6 +10,7 @@ from backend.app.schemas.analysis import (
 from backend.app.services.engine import ContextGuardAnalysisEngine
 from backend.app.services.examples import get_examples, get_example_by_id
 from backend.app.services.evaluator import run_benchmark_evaluation
+from backend.app.services.nlp import classifier
 
 router = APIRouter(prefix="/api", tags=["ContextGuard API"])
 engine = ContextGuardAnalysisEngine()
@@ -27,10 +28,11 @@ def health_check():
             "reciprocal_banter_detection",
             "repeated_targeting_asymmetry",
             "sarcasm_inversion_heuristics",
-            "calibrated_explainability",
-            "zero_cloud_leak_privacy"
+            "rule_based_explainability",
+            "local_statistical_classifier" if classifier() is not None else "statistical_classifier_not_trained",
+            "pos_ner_and_preprocessing_workbench"
         ],
-        privacy_mode="Strict Local Processing (Zero Persistent Conversation Logging)"
+        privacy_mode="Local analysis by default; hosted second opinion requires a separate explicit request"
     )
 
 @router.get("/examples", response_model=List[ExampleConversation])
@@ -75,7 +77,7 @@ def get_model_info():
     """Returns the analysis engine architecture, execution mode, and research limitations."""
     return {
         "engine_name": engine.engine_name,
-        "engine_type": "Hybrid Multi-Turn Dialogue Rule & Calibrated Context Engine",
+        "engine_type": "Multi-turn context rules with separately reported trained comment classifier",
         "transformer_installed": engine.transformer_available,
         "execution_mode": "Active Local Pipeline",
         "features": [
@@ -84,10 +86,12 @@ def get_model_info():
             "Sarcasm & Tone Shift Identification",
             "Targeting Asymmetry Matrix (Who targets whom)",
             "Systematic Exclusion vs Isolated Irritation Distinction",
-            "Calibrated Uncertainty & Explainable Evidence"
+            "Rule-assigned Uncertainty & Explainable Evidence",
+            "BoW / TF-IDF Naive Bayes and Logistic Regression comparisons",
+            "spaCy POS, NER and dependency inspection"
         ],
         "licensing": "MIT License - Open Academic & Assistive Research",
-        "privacy_notice": "Conversations are analyzed in memory and immediately discarded. No messages are stored or transmitted externally.",
+        "privacy_notice": "Local analysis does not send text externally. The separate hosted-review endpoint sends the supplied transcript to Hugging Face only after explicit consent. No conversation database is implemented.",
         "limitations": [
             "Assists human decision-makers; does not provide legal or definitive psychological diagnoses.",
             "Text alone lacks vocal pitch, body language, and historical unrecorded friendships.",

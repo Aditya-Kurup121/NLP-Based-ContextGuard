@@ -36,7 +36,10 @@ def test_repeated_exclusion(engine):
     assert res.metrics.potentially_harmful_count >= 2
     # Alex is repeatedly targeting with exclusion
     assert any("Social Exclusion" in m.detected_pattern for m in res.messages)
-    assert any(t.is_asymmetric for t in res.targeting_patterns)
+    # No recipient is named or speaks in this transcript. Detect exclusion but
+    # do not fabricate a participant merely to populate the targeting matrix.
+    assert all(message.target is None for message in res.messages)
+    assert res.targeting_patterns == []
 
 def test_sarcasm_and_ambiguity(engine):
     req = AnalyzeRequest(

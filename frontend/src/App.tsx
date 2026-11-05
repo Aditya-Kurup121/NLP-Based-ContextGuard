@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { Navbar } from './components/Navbar';
 import { LandingHero } from './components/LandingHero';
 import { AnalyzerForm } from './components/AnalyzerForm';
 import { RiskSummaryCard } from './components/RiskSummaryCard';
 import { ConversationTimeline } from './components/ConversationTimeline';
 import { MessageDetailModal } from './components/MessageDetailModal';
-import { InteractionMatrix } from './components/InteractionMatrix';
+const InteractionMatrix = lazy(() => import('./components/InteractionMatrix').then(m => ({ default: m.InteractionMatrix })));
 import { MethodologySection } from './components/MethodologySection';
 import { BenchmarkSection } from './components/BenchmarkSection';
+import { ConversationPulse } from './components/ConversationPulse';
+const NlpWorkbench = lazy(() => import('./components/NlpWorkbench').then(m => ({ default: m.NlpWorkbench })));
+const WhatsAppImport = lazy(() => import('./components/WhatsAppImport').then(m => ({ default: m.WhatsAppImport })));
 
 import type { 
   ExampleConversation, 
@@ -27,8 +30,9 @@ import {
 } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'analyzer' | 'network' | 'methodology' | 'benchmark'>('analyzer');
-  const [backendOnline, setBackendOnline] = useState<boolean>(true);
+  const [activeTab, setActiveTab] = useState<'analyzer' | 'network' | 'methodology' | 'benchmark' | 'lab' | 'import'>('analyzer');
+  const [backendOnline, setBackendOnline] = useState<boolean>(false);
+  const [importVisited, setImportVisited] = useState(false);
   const [examples, setExamples] = useState<ExampleConversation[]>([]);
   
   // Input form state
@@ -41,6 +45,7 @@ export const App: React.FC = () => {
 
   // Analysis result state
   const [analysisResult, setAnalysisResult] = useState<AnalyzeResponse | null>(null);
+  const [reviewedInput, setReviewedInput] = useState('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<MessageAnalysis | null>(null);
@@ -100,6 +105,7 @@ export const App: React.FC = () => {
         context: contextInfo
       });
       setAnalysisResult(response);
+      setReviewedInput(JSON.stringify([conversationText, contextInfo]));
 
       // Scroll smoothly to results
       setTimeout(() => {
@@ -129,19 +135,21 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-navy-950 text-slate-100 flex flex-col font-sans selection:bg-teal-500/30 selection:text-teal-200">
+    <div className="app-shell min-h-screen flex flex-col font-sans">
+      <a className="skip-link" href="#main-content">Skip to workspace</a>
       {/* Top Navbar */}
       <Navbar
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={tab => { if (tab === 'import') setImportVisited(true); setActiveTab(tab); }}
         backendOnline={backendOnline}
         onClearAll={handleClearAll}
-        hasResults={Boolean(analysisResult)}
+        hasResults={Boolean(analysisResult) && activeTab !== 'import'}
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
+      <main id="main-content" className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
         {/* Tab 1: Analyzer */}
+        <div hidden={activeTab !== 'import'}><Suspense fallback={<p role="status">Opening the import workspace…</p>}>{importVisited && <WhatsAppImport />}</Suspense></div>
         {activeTab === 'analyzer' && (
           <>
             {/* Show landing hero if no analysis yet */}
@@ -154,6 +162,7 @@ export const App: React.FC = () => {
                 onLoadSample={(sampleId) => {
                   const ex = examples.find(e => e.id === sampleId);
                   if (ex) handleSelectExample(ex);
+                  else setError('Sample conversations are unavailable. Start the local backend to load them, or paste your own conversation.');
                 }}
               />
             )}
@@ -175,17 +184,18 @@ export const App: React.FC = () => {
             {/* Results Section */}
             {analysisResult && (
               <div id="results-anchor" className="space-y-6 pt-4 animate-in fade-in duration-300">
+                {reviewedInput !== JSON.stringify([conversationText, contextInfo]) && <div className="editor-error" role="status">The conversation or context has changed. These results belong to the previous review. Run a new review to update them.</div>}
                 {/* Result Action Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl glass-panel border border-slate-800">
-                  <div className="flex items-center space-x-2 text-xs text-slate-400">
-                    <Sparkles className="w-4 h-4 text-teal-400" />
-                    <span>Analysis generated via <strong className="text-slate-200 font-mono">{analysisResult.model_info.engine_name}</strong></span>
+                <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl glass-panel border border-stone-200">
+                  <div className="flex items-center space-x-2 text-xs text-stone-600">
+                    <Sparkles className="w-4 h-4 text-emerald-700" />
+                    <span>Analysis generated via <strong className="text-stone-800 font-mono">{analysisResult.model_info.engine_name}</strong></span>
                   </div>
 
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => window.print()}
-                      className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-colors cursor-pointer"
+                      className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-stone-700 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 border border-stone-200 transition-colors cursor-pointer"
                       title="Print or save as PDF report"
                     >
                       <Printer className="w-3.5 h-3.5" />
@@ -194,7 +204,7 @@ export const App: React.FC = () => {
 
                     <button
                       onClick={() => setActiveTab('network')}
-                      className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-300 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 transition-colors cursor-pointer"
+                      className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-800 hover:text-stone-900 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 transition-colors cursor-pointer"
                     >
                       <span>View Interaction Matrix</span>
                     </button>
@@ -203,6 +213,7 @@ export const App: React.FC = () => {
 
                 {/* Risk Summary Card */}
                 <RiskSummaryCard results={analysisResult} />
+                <ConversationPulse messages={analysisResult.messages} onSelect={setSelectedMessage} />
 
                 {/* Interactive Message Timeline */}
                 <ConversationTimeline
@@ -217,16 +228,16 @@ export const App: React.FC = () => {
         {/* Tab 2: Interaction Network & Targeting Matrix */}
         {activeTab === 'network' && (
           analysisResult ? (
-            <InteractionMatrix
+            <Suspense fallback={<p role="status">Loading interaction map…</p>}><InteractionMatrix
               participants={analysisResult.participants}
               targetingPatterns={analysisResult.targeting_patterns}
               messages={analysisResult.messages}
-            />
+            /></Suspense>
           ) : (
-            <div className="glass-panel rounded-2xl p-12 text-center border border-slate-800 max-w-xl mx-auto my-12">
-              <Sparkles className="w-10 h-10 text-indigo-400 mx-auto mb-4" />
-              <h3 className="text-lg font-bold text-white mb-2">No Active Conversation Analyzed</h3>
-              <p className="text-xs text-slate-400 mb-6">
+            <div className="glass-panel rounded-2xl p-12 text-center border border-stone-200 max-w-xl mx-auto my-12">
+              <Sparkles className="w-10 h-10 text-emerald-700 mx-auto mb-4" />
+              <h3 className="text-lg font-bold text-stone-900 mb-2">No Active Conversation Analyzed</h3>
+              <p className="text-xs text-stone-600 mb-6">
                 Analyze a conversation first to map participant interaction patterns, directed hostile turns, and targeting asymmetry.
               </p>
               <button
@@ -236,7 +247,7 @@ export const App: React.FC = () => {
                   }
                   setActiveTab('analyzer');
                 }}
-                className="px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-indigo-500 to-teal-500 hover:from-indigo-400 hover:to-teal-400 shadow-md transition-all cursor-pointer"
+                className="px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-emerald-800     shadow-md transition-all cursor-pointer"
               >
                 Load Sample & View Matrix
               </button>
@@ -250,6 +261,7 @@ export const App: React.FC = () => {
         )}
 
         {/* Tab 4: Benchmark Evaluation */}
+        {activeTab === 'lab' && <Suspense fallback={<p role="status">Opening the language lab…</p>}><NlpWorkbench conversation={conversationText} /></Suspense>}
         {activeTab === 'benchmark' && (
           <BenchmarkSection />
         )}
@@ -262,15 +274,15 @@ export const App: React.FC = () => {
       />
 
       {/* Footer */}
-      <footer className="glass-panel border-t border-slate-800/80 py-8 mt-12 bg-navy-950/90 text-xs text-slate-400">
+      <footer className="glass-panel border-t border-stone-200/80 py-8 mt-12 bg-stone-50/90 text-xs text-stone-600">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-2">
-            <ShieldCheck className="w-4 h-4 text-teal-400" />
-            <span className="font-semibold text-slate-200">ContextGuard</span>
+            <ShieldCheck className="w-4 h-4 text-emerald-700" />
+            <span className="font-semibold text-stone-800">ContextGuard</span>
             <span>— Assistive Conversational NLP for Cyberbullying Detection</span>
           </div>
 
-          <div className="flex items-center space-x-6 text-slate-500">
+          <div className="flex items-center space-x-6 text-stone-500">
             <span>Decision-Support AI</span>
             <span>•</span>
             <span>Zero Persistent PII Storage</span>

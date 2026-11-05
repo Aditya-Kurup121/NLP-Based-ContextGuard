@@ -19,9 +19,19 @@ export interface MessageSignal {
   is_reciprocal_tease: boolean;
   is_repeated_target: boolean;
   is_victim_protest: boolean;
+  is_retaliatory_threat?: boolean;
+  has_confrontation?: boolean;
+  has_intimidation?: boolean;
 }
 
 export interface MessageAnalysis {
+  statistical_assessment?: {
+    label: string;
+    toxicity_score: number;
+    model: string;
+    top_features: Array<{ term: string; contribution: number }>;
+    note: string;
+  } | null;
   id: number;
   speaker: string;
   target?: string;

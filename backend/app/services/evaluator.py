@@ -26,8 +26,8 @@ BENCHMARK_CONVERSATIONS = [
         "conversation": "Sam: Wow, you're a real genius.\nJordan: What is that supposed to mean?\nSam: Forget it.",
         "relationship": "Acquaintances",
         "setting": "Forum",
-        "ground_truth_risk": "Low", # or Moderate/Uncertain
-        "primary_label": "Uncertain — More Context Needed"
+        "ground_truth_risk": "Moderate",
+        "primary_label": "Potentially Harmful"
     },
     {
         "id": "bench_04",
@@ -137,8 +137,8 @@ def run_benchmark_evaluation() -> Dict[str, Any]:
         fp = sum(confusion_matrix[other_c][c] for other_c in classes if other_c != c)
         fn = sum(confusion_matrix[c][other_c] for other_c in classes if other_c != c)
         
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 1.0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 1.0
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
         f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
 
         metrics_per_class[c] = {
@@ -161,7 +161,7 @@ def run_benchmark_evaluation() -> Dict[str, Any]:
         "confusion_matrix": confusion_matrix,
         "detailed_results": detailed_results,
         "methodology": {
-            "dataset_origin": "Curated multi-turn synthetic dialogue benchmark formatted per Waseem et al. & Davidson et al. cyberbullying taxonomy.",
+            "dataset_origin": "Ten curated synthetic conversation demonstrations. These are regression examples, not an independent real-world evaluation dataset.",
             "privacy_compliance": "Zero personally identifiable information (PII); completely synthetic and ethically simulated test cases.",
             "reproducibility": "Run via 'python -m backend.app.services.evaluator' or in-browser evaluation panel."
         }

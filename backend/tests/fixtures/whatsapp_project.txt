@@ -1,0 +1,14 @@
+28/10/2026, 09:00 - Messages and calls are end-to-end encrypted.
+28/10/2026, 09:01 - Maya: Can we meet at 4 to finish the NLP project slides?
+28/10/2026, 09:02 - Jordan: Yes. I will prepare the dataset evaluation table.
+28/10/2026, 09:03 - Sam: I can explain TF-IDF and the confusion matrix.
+28/10/2026, 09:04 - Maya: Great, please include the limitations too.
+28/10/2026, 09:05 - Jordan: <Media omitted>
+28/10/2026, 16:00 - Maya: Has everyone added their project slides?
+28/10/2026, 16:01 - Jordan: you motherfucking moron
+28/10/2026, 16:02 - Maya: Please stop making personal comments.
+28/10/2026, 16:03 - Jordan: ill kill you
+28/10/2026, 16:04 - Sam: Jordan, cut it out. This is unnecessary.
+28/10/2026, 16:05 - Maya: I am leaving this discussion for now.
+29/10/2026, 10:00 - Sam: I have shared the final project slides with our teacher.
+29/10/2026, 10:01 - Maya: Thank you. We should explain the evaluation results clearly.

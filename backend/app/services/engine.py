@@ -14,6 +14,7 @@ from backend.app.schemas.analysis import (
     ContextInfo
 )
 from backend.app.services.parser import parse_conversation, ParsedMessage
+from backend.app.services.nlp import classify_texts, classifier
 from backend.app.services.features import (
     extract_all_features,
     infer_message_targets,
@@ -35,27 +36,23 @@ class ContextGuardAnalysisEngine:
         self._init_transformer_pipeline()
 
     def _init_transformer_pipeline(self):
-        """
-        Attempts to load Hugging Face transformer pipeline if installed and downloaded.
-        Provides zero-overhead fallback to local calibrated multi-turn context analyzer.
-        """
-        try:
-            # We check if transformers is installed without blocking startup
-            import transformers # noqa
-            self.transformer_available = True
-        except ImportError:
-            self.transformer_available = False
+        # No local transformer is loaded. A package import is not model availability.
+        self.transformer_available = False
 
     def analyze(self, request: AnalyzeRequest) -> AnalyzeResponse:
-        parsed_messages = parse_conversation(request.conversation)
+        return self.analyze_messages(parse_conversation(request.conversation), request.context)
+
+    def analyze_messages(self, parsed_messages: List[ParsedMessage], context: Optional[ContextInfo] = None) -> AnalyzeResponse:
+        """Analyze already structured messages without reparsing Unicode names or multiline text."""
         if not parsed_messages:
-            return self._empty_response(request.context)
+            return self._empty_response(context)
 
         features_list = extract_all_features(parsed_messages)
+        statistical_results = classify_texts([message.text for message in parsed_messages])
         sender_target_pairs = infer_message_targets(parsed_messages)
         total_msgs = len(parsed_messages)
 
-        context_info = request.context or ContextInfo()
+        context_info = context or ContextInfo()
         rel_lower = (context_info.relationship or "").lower()
         is_known_friendly = any(w in rel_lower for w in ["friend", "close", "gaming", "squad", "partner", "buddy"])
         is_high_risk_setting = any(w in rel_lower for w in ["stranger", "bully", "ex", "anonymous"]) or "public" in (context_info.setting or "").lower()
@@ -83,6 +80,8 @@ class ContextGuardAnalysisEngine:
             prev_msg = parsed_messages[idx - 1] if idx > 0 else None
             next_feat = features_list[idx + 1] if idx + 1 < total_msgs else None
             next_msg = parsed_messages[idx + 1] if idx + 1 < total_msgs else None
+            prior_features = features_list[:idx]
+            prior_messages = parsed_messages[:idx]
 
             # Classification logic
             classification, conf_score, conf_cat, pattern, evidence, alt_interp, action, signals = self._classify_turn(
@@ -96,6 +95,8 @@ class ContextGuardAnalysisEngine:
                 prev_feat=prev_feat,
                 next_msg=next_msg,
                 next_feat=next_feat,
+                prior_features=prior_features,
+                prior_messages=prior_messages,
                 has_reciprocal_laughter=has_reciprocal_laughter,
                 is_known_friendly=is_known_friendly,
                 is_high_risk_setting=is_high_risk_setting,
@@ -134,7 +135,8 @@ class ContextGuardAnalysisEngine:
                     targeting_pattern=targeting_desc,
                     alternative_interpretation=alt_interp,
                     suggested_action=action,
-                    signals=signals
+                    signals=signals,
+                    statistical_assessment=statistical_results[idx],
                 )
             )
 
@@ -200,6 +202,13 @@ class ContextGuardAnalysisEngine:
         banter_count = sum(1 for m in analyzed_messages if m.classification == "Friendly Banter")
         neutral_count = sum(1 for m in analyzed_messages if m.classification == "Harmless / Neutral")
 
+        has_direct_lethal_threat = any(f.has_direct_threat for f in features_list)
+        has_confrontation_threat = any(f.has_confrontation for f in features_list)
+        has_retaliatory_escalation = any(f.has_retaliatory for f in features_list)
+        has_boundary_fear = any(f.has_boundary_fear for f in features_list)
+        has_bystander_defense = any(f.has_bystander_defense for f in features_list)
+        has_stop_request = any(f.has_explicit_stop_request for f in features_list)
+
         overall_risk, estimated_risk_score, risk_summary, recommendations = self._synthesize_risk(
             total_msgs=total_msgs,
             harmful_count=harmful_count,
@@ -208,7 +217,13 @@ class ContextGuardAnalysisEngine:
             uncertain_count=uncertain_count,
             banter_count=banter_count,
             targeting_interactions=targeting_interactions,
-            is_known_friendly=is_known_friendly
+            is_known_friendly=is_known_friendly,
+            has_direct_lethal_threat=has_direct_lethal_threat,
+            has_confrontation_threat=has_confrontation_threat,
+            has_retaliatory_escalation=has_retaliatory_escalation,
+            has_boundary_fear=has_boundary_fear,
+            has_bystander_defense=has_bystander_defense,
+            has_stop_request=has_stop_request
         )
 
         metrics = ConversationMetrics(
@@ -223,10 +238,10 @@ class ContextGuardAnalysisEngine:
 
         model_info = ModelInfo(
             engine_name="ContextGuard Local Contextual NLP Pipeline",
-            engine_type="Hybrid Multi-Turn Dialogue Rule & Calibrated Context Engine",
-            execution_mode="Active Local Pipeline (Deterministic, Zero External Network Leaks)",
+            engine_type="Context rules with a separately reported trained comment classifier" if classifier() is not None else "Multi-turn dialogue rules",
+            execution_mode="Local analysis; hosted review requires a separate explicit request",
             description="Analyzes conversational history, turn-taking reciprocity, sarcasm markers, and targeting asymmetry.",
-            transparency_notes="Heuristic scores and contextual signals are transparently labeled. Transformer weights can be hot-swapped via Hugging Face pipeline."
+            transparency_notes="Conversation risk is rule-based. The trained classifier estimates standalone comment toxicity separately and does not override conversation risk. Neither score is statistically calibrated."
         )
 
         limitations = [
@@ -270,6 +285,8 @@ class ContextGuardAnalysisEngine:
         prev_feat: Optional[ExtractedFeatures],
         next_msg: Optional[ParsedMessage],
         next_feat: Optional[ExtractedFeatures],
+        prior_features: List[ExtractedFeatures],
+        prior_messages: List[ParsedMessage],
         has_reciprocal_laughter: bool,
         is_known_friendly: bool,
         is_high_risk_setting: bool,
@@ -277,7 +294,7 @@ class ContextGuardAnalysisEngine:
         speaker_target_hostile_counts: Dict[Tuple[str, str], int]
     ) -> Tuple[str, float, str, str, List[str], Optional[str], str, MessageSignal]:
         """
-        Classifies an individual turn by looking at its own features AND the surrounding dialogue context.
+        Classifies an individual turn by looking at its own features AND the surrounding multi-turn dialogue context.
         """
         evidence: List[str] = []
         signals = MessageSignal(
@@ -285,34 +302,66 @@ class ContextGuardAnalysisEngine:
             has_playful_emoji=feat.has_playful_emoji,
             has_exclusion_phrase=feat.has_exclusion,
             has_insult_lexicon=feat.has_insult,
-            has_threat_lexicon=feat.has_threat,
+            has_threat_lexicon=(feat.has_direct_threat or feat.has_confrontation),
             is_sarcasm_suspect=feat.has_sarcasm_praise,
             is_reciprocal_tease=False,
             is_repeated_target=False,
-            is_victim_protest=feat.has_protest
+            is_victim_protest=(feat.has_protest or feat.has_boundary_fear),
+            is_retaliatory_threat=feat.has_retaliatory,
+            has_confrontation=feat.has_confrontation,
+            has_intimidation=feat.has_ominous_warning
         )
 
         prior_hostile_count = 0
         if target:
             prior_hostile_count = speaker_target_hostile_counts.get((sender, target), 0)
-        # Also check general hostile turns by this sender if target is implied/group
         general_prior = sum(count for (s, t), count in speaker_target_hostile_counts.items() if s == sender)
         prior_hostile_count = max(prior_hostile_count, general_prior)
-
         signals.is_repeated_target = prior_hostile_count >= 1
 
         # ----------------------------------------------------
-        # RULE 1: Direct Physical Threat / Severe Safety Concern
+        # RULE 0: Friendly Banter & Reciprocal Teasing Override
+        # (False Positive Prevention: playful friends teasing each other)
         # ----------------------------------------------------
-        if feat.has_threat:
-            evidence.append("Explicit violent or threatening phrasing detected ('hurt', 'find you after class', 'kill', etc.).")
+        is_teasing_with_laughter = (feat.has_laughter or feat.has_playful_emoji) and (feat.has_sarcasm_praise or feat.has_insult or feat.has_retaliatory)
+        has_subsequent_laughter = (next_feat and (next_feat.has_laughter or next_feat.has_playful_emoji or next_feat.has_sarcasm_praise))
+        has_prior_laughter = (prev_feat and (prev_feat.has_laughter or prev_feat.has_playful_emoji))
+
+        if not feat.has_direct_threat and not feat.has_confrontation:
+            if is_teasing_with_laughter or (has_reciprocal_laughter and (feat.has_sarcasm_praise or feat.has_laughter or "rematch" in feat.text_lower or "nobel" in feat.text_lower)):
+                signals.is_reciprocal_tease = True
+                evidence.append("Playful banter cues present (laughter expressions, laughing emojis, or self-deprecating humor).")
+                if has_subsequent_laughter or has_prior_laughter:
+                    evidence.append("Mutual reciprocal participation: surrounding interlocutors responded with humor, playful escalation, or agreement.")
+                if is_known_friendly:
+                    evidence.append(f"Contextual prior: Participants are identified as '{context_info.relationship}'.")
+
+                alt_interp = "If the recipient secretly feels uncomfortable, teasing could occasionally cross personal boundaries even if smiles/emojis are used."
+                action = "No intervention needed. Conversation demonstrates healthy peer banter. Check in with participants only if someone expresses discomfort."
+
+                return (
+                    "Friendly Banter",
+                    0.89,
+                    "High",
+                    "Reciprocal Playful Banter",
+                    evidence,
+                    alt_interp,
+                    action,
+                    signals
+                )
+
+        # ----------------------------------------------------
+        # RULE 1: Direct Physical / Violent Threat (Severe Concern)
+        # ----------------------------------------------------
+        if feat.has_direct_threat:
+            evidence.append("Explicit violent or lethal threat phrasing detected ('hurt', 'kill', 'punch', 'beat', etc.).")
             alt_interp = "Could theoretically be gaming hyperbole, but safety protocols require treating direct threats with urgency."
             action = "Immediately prioritize personal safety. Save conversation records and report to a trusted adult, educator, or platform administrator."
             return (
                 "Threat / Urgent Concern",
-                0.94,
+                0.95,
                 "High",
-                "Direct Intimidation / Physical Threat",
+                "Direct Physical / Violent Threat",
                 evidence,
                 alt_interp,
                 action,
@@ -320,25 +369,275 @@ class ContextGuardAnalysisEngine:
             )
 
         # ----------------------------------------------------
-        # RULE 2: Social Exclusion / Hostile Rejection
+        # RULE 2: Real-World In-Person Confrontation Threat
         # ----------------------------------------------------
-        if feat.has_exclusion:
-            evidence.append("Systemic exclusionary language detected ('nobody wants you', 'leave the group', 'stop talking', etc.).")
-            signals.has_exclusion_phrase = True
+        if feat.has_confrontation:
+            evidence.append("Specifies concrete real-world location or timeframe for in-person confrontation ('find you after college tomorrow', 'outside', etc.).")
+            had_prior_report = any(f.has_report_or_grievance for f in prior_features)
+            had_prior_retaliatory = any(f.has_retaliatory for f in prior_features)
 
-            # Check if this speaker has repeatedly said this, or if multiple speakers join
+            if had_prior_retaliatory or had_prior_report:
+                evidence.append("Escalates from preceding retaliatory statement following participant's reported abuse complaint.")
+            if not feat.has_laughter and not feat.has_playful_emoji:
+                evidence.append("Absence of playful markers, emojis, or reciprocal teasing supports genuine confrontation intent.")
+
+            alt_interp = "Could represent rhetorical posturing, but naming a concrete future location and timeframe indicates serious potential for in-person confrontation."
+            action = "Prioritize immediate physical safety. Avoid isolated areas around college or meeting locations, notify campus authorities, and preserve chat records."
+
+            return (
+                "Threat / Urgent Concern",
+                0.91,
+                "High",
+                "Real-World / In-Person Confrontation Threat",
+                evidence,
+                alt_interp,
+                action,
+                signals
+            )
+
+        # ----------------------------------------------------
+        # RULE 3: Reinforced Threat / Persistent Intimidation
+        # ----------------------------------------------------
+        if feat.has_ominous_warning:
+            had_prior_threat = any(f.has_direct_threat or f.has_confrontation for f in prior_features)
+            had_prior_retaliatory = any(f.has_retaliatory for f in prior_features)
+            had_prior_boundary = any(f.has_boundary_fear for f in prior_features)
+
+            if had_prior_threat or had_prior_retaliatory:
+                evidence.append("Persistent intimidation reinforcing a prior confrontation threat or retaliatory warning.")
+                if had_prior_boundary or (prev_feat and prev_feat.has_boundary_fear):
+                    evidence.append("Directly disregards recipient's explicit boundary demand to stay away ('Don't come near me').")
+                evidence.append("Maintains psychological pressure focusing on upcoming timeframe ('worried about tomorrow').")
+
+                alt_interp = "Could represent verbal posturing, but persistence following explicit boundary assertion demonstrates intentional intimidation."
+                action = "Treat persistent intimidation as an active safety concern. Alert college administration, security, or law enforcement."
+
+                return (
+                    "Threat / Urgent Concern",
+                    0.88,
+                    "High",
+                    "Reinforced Threat / Persistent Intimidation",
+                    evidence,
+                    alt_interp,
+                    action,
+                    signals
+                )
+            else:
+                evidence.append("Ominous warning phrasing ('should be worried') detected without prior dispute context.")
+                alt_interp = "Could be dramatic exaggeration or non-physical warning; text alone is ambiguous."
+                action = "Seek additional conversational context before inferring malicious intent."
+                return (
+                    "Potentially Harmful",
+                    0.65,
+                    "Moderate",
+                    "Veiled Warning / Ambiguous Intimidation",
+                    evidence,
+                    alt_interp,
+                    action,
+                    signals
+                )
+
+        # ----------------------------------------------------
+        # RULE 4: Retaliatory Intimidation / Consequence Warnings
+        # ----------------------------------------------------
+        if feat.has_retaliatory:
+            had_prior_report = any(f.has_report_or_grievance for f in prior_features)
+            had_prior_stop_request = any(f.has_explicit_stop_request for f in prior_features)
+            had_prior_insult_pattern = prior_hostile_count >= 1
+            if had_prior_report:
+                evidence.append("Veiled retaliatory warning ('regret doing that') immediately following participant's assertion of reporting abusive behavior.")
+                evidence.append("Contextual connection to prior complaint indicates possible payback or retribution.")
+                alt_interp = "Could theoretically express intent to take administrative or platform counter-action, but in the context of abusive messaging reports, it conveys intimidation."
+                action = "Document this statement as retaliatory posturing. Avoid 1-on-1 engagement and keep records for platform or institutional review."
+
+                return (
+                    "Potentially Harmful",
+                    0.78,
+                    "Moderate",
+                    "Retaliatory Intimidation / Consequence Warning",
+                    evidence,
+                    alt_interp,
+                    action,
+                    signals
+                )
+            elif had_prior_stop_request and had_prior_insult_pattern:
+                # Victim explicitly asked the sender to stop; sender responds with a threat
+                evidence.append("Retaliatory consequence warning issued directly after the recipient explicitly asked the sender to stop ('please stop', 'I'm asking you to stop').")
+                evidence.append(f"Follows {prior_hostile_count} prior hostile turn(s); the stop request was ignored and then weaponised.")
+                alt_interp = "Could theoretically express non-violent frustration, but issuing a consequence warning after an explicit stop request demonstrates intentional intimidation."
+                action = "Document this statement. The pattern of ignoring a stop request and then threatening warrants platform moderation or reporting."
+                return (
+                    "Potentially Harmful",
+                    0.80,
+                    "Moderate",
+                    "Retaliatory Warning After Explicit Stop Request",
+                    evidence,
+                    alt_interp,
+                    action,
+                    signals
+                )
+            elif total_msgs <= 2:
+                evidence.append("Isolated phrase ('regret that') without surrounding dialogue context or reported dispute.")
+                alt_interp = "Could refer to game moves, professional decisions, or non-threatening colloquial regret."
+                action = "Seek additional conversational context before inferring malicious intent."
+                return (
+                    "Uncertain — More Context Needed",
+                    0.55,
+                    "Low / Uncertain",
+                    "Ambiguous Consequence Warning",
+                    evidence,
+                    alt_interp,
+                    action,
+                    signals
+                )
+            else:
+                evidence.append("Warning of negative consequences ('you'll regret this') within an ongoing exchange.")
+                alt_interp = "Could express severe disagreement or non-violent dispute resolution."
+                action = "Monitor conversation to assess whether hostility escalates into threats."
+                return (
+                    "Potentially Harmful",
+                    0.68,
+                    "Moderate",
+                    "Retaliatory Warning",
+                    evidence,
+                    alt_interp,
+                    action,
+                    signals
+                )
+
+        # ----------------------------------------------------
+        # RULE 5: Recipient Boundary Assertion / Fear / Clarification Inquiry
+        # ----------------------------------------------------
+        if feat.has_boundary_fear:
+            had_prior_threat = any(f.has_direct_threat or f.has_confrontation or f.has_retaliatory for f in prior_features)
+            if had_prior_threat:
+                evidence.append("Recipient explicitly orders the sender not to approach ('Don't come near me') and emphasizes seriousness ('I'm serious').")
+                evidence.append("Demonstrates active objection, fear, or refusal of real-world contact following confrontation statements.")
+                alt_interp = "Speaker is stating personal boundaries and distress, not initiating aggression."
+                action = "Support the recipient's boundary and ensure physical distance is respected."
+                return (
+                    "Uncertain — More Context Needed",
+                    0.76,
+                    "Moderate",
+                    "Explicit Boundary Assertion / Distress Indicator",
+                    evidence,
+                    alt_interp,
+                    action,
+                    signals
+                )
+
+        if feat.has_inquiry:
+            had_prior_ominous = any(f.has_retaliatory or f.has_ominous_warning or f.has_sarcasm_praise for f in prior_features)
+            # Also treat "What does that mean?" as victim distress if there were prior insults
+            had_prior_hostile = prior_hostile_count >= 1
+            if had_prior_ominous or had_prior_hostile:
+                evidence.append("Recipient questions intent following an ominous retaliatory statement ('What does that mean?').")
+                evidence.append("Indicates uncertainty or distress regarding the preceding veiled consequence warning.")
+                alt_interp = "Standard clarification question indicating ambiguity or discomfort."
+                action = "Clarify intent directly or step back from escalating conflict."
+                return (
+                    "Uncertain — More Context Needed",
+                    0.70,
+                    "Moderate",
+                    "Clarification Inquiry / Ambiguity Response",
+                    evidence,
+                    alt_interp,
+                    action,
+                    signals
+                )
+
+        # ----------------------------------------------------
+        # ----------------------------------------------------
+        # RULE 5.5: Explicit Stop Request (Victim asking sender to cease harassment)
+        # Catches polite but unambiguous pleas: "please stop", "I'm asking you to stop",
+        # "I've asked you before to stop", "stop making personal comments"
+        # ----------------------------------------------------
+        if feat.has_explicit_stop_request:
+            evidence.append("Speaker explicitly requests that the other person stop ('please stop', 'I've asked you before to stop', 'stop making personal comments').")
+            evidence.append("This is an unambiguous victim boundary assertion and de-escalation attempt.")
+            alt_interp = "Speaker is setting a verbal boundary; the request itself is not hostile."
+            action = "Validate the speaker's request. If the other party continues, escalate to platform moderation."
+            return (
+                "Uncertain — More Context Needed",
+                0.75,
+                "Moderate",
+                "Victim Explicit Stop Request",
+                evidence,
+                alt_interp,
+                action,
+                signals
+            )
+
+        # ----------------------------------------------------
+        # RULE 6: Reporting / Grievance Explanations
+        # ----------------------------------------------------
+        if feat.has_report_or_grievance:
+            if "why" in feat.text_lower:
+                evidence.append("Inquiry regarding account reporting status without overt hostility.")
+                pattern = "Account Inquiry / Grievance"
+            else:
+                evidence.append("Factual statement explaining the basis for reporting abusive messages or setting boundaries.")
+                pattern = "Reporting Explanation / Boundary Assertion"
+            alt_interp = "Routine accountability discussion regarding digital interaction standards."
+            action = "Keep communication objective and rely on official platform reporting channels."
+            return (
+                "Harmless / Neutral",
+                0.90,
+                "High",
+                pattern,
+                evidence,
+                alt_interp,
+                action,
+                signals
+            )
+
+        # ----------------------------------------------------
+        # RULE 6.5: Bystander Defence / Supportive Intervention
+        # A third-party participant is actively defending the target.
+        # Must be checked BEFORE Rule 7 (Social Exclusion) to prevent
+        # defence phrases like "just leave Sam alone" from triggering
+        # the exclusion detector.
+        # ----------------------------------------------------
+        if feat.has_bystander_defense:
+            had_prior_hostile_in_conv = any(f.has_insult or f.has_exclusion or f.has_covert_exclusion or f.has_retaliatory for f in prior_features)
+            evidence.append("A bystander or third-party participant is actively intervening to defend another participant ('cut it out', 'that's unnecessary', 'leave them alone').")
+            if had_prior_hostile_in_conv:
+                evidence.append("Intervention occurs in the context of prior hostile or exclusionary turns; the bystander is standing up for a recipient of repeated targeting.")
+            alt_interp = "The speaker is not initiating hostility; they are attempting to de-escalate a conflict."
+            action = "Acknowledge and support the bystander's intervention. This is a prosocial behaviour."
+            return (
+                "Harmless / Neutral",
+                0.90,
+                "High",
+                "Bystander Defence / Supportive Intervention",
+                evidence,
+                alt_interp,
+                action,
+                signals
+            )
+
+        # ----------------------------------------------------
+        # RULE 7: Social Exclusion / Hostile Rejection (Overt & Covert)
+        # ----------------------------------------------------
+        if feat.has_exclusion or feat.has_covert_exclusion:
+            signals.has_exclusion_phrase = True
+            if feat.has_exclusion:
+                evidence.append("Systemic exclusionary language detected ('nobody wants you', 'leave the group', 'stop talking', 'don't expect an invitation', etc.).")
+            else:
+                evidence.append("Indirect or covert exclusionary statement detected ('meetings go better when certain people aren't there', 'team works better without distractions', etc.).")
+
             if prior_hostile_count >= 1:
                 evidence.append(f"Follows {prior_hostile_count} previous hostile or exclusionary turn(s) from {sender} toward {target or 'the participant'}.")
                 classification = "Possible Cyberbullying"
                 pattern = "Repeated Social Exclusion & Harassment"
-                conf = 0.88
+                conf = 0.88 if feat.has_exclusion else 0.85
                 action = "Recognize this as persistent exclusion. Consider stepping away from this group, seeking support, or archiving the conversation for moderation."
                 alt_interp = "Unlikely to be friendly teasing given the lack of playful cues and repeated unreciprocated hostility."
             else:
-                classification = "Possible Cyberbullying" if not is_known_friendly else "Potentially Harmful"
-                pattern = "Social Exclusion & Ostracism"
-                conf = 0.81
-                action = "Set clear boundaries or ask a moderator to intervene if this behavior continues."
+                classification = "Possible Cyberbullying" if (feat.has_exclusion and not is_known_friendly) else "Potentially Harmful"
+                pattern = "Social Exclusion & Ostracism" if feat.has_exclusion else "Indirect / Covert Social Exclusion"
+                conf = 0.81 if feat.has_exclusion else 0.76
+                action = "Set clear boundaries or ask a moderator or team lead to intervene if this behavior continues."
                 alt_interp = "Could represent an emotional venting moment during an argument rather than systematic cyberbullying."
 
             return (
@@ -353,30 +652,45 @@ class ContextGuardAnalysisEngine:
             )
 
         # ----------------------------------------------------
-        # RULE 3: Friendly Banter & Reciprocal Teasing
+        # RULE 7.2: Dismissive Invalidation / Gaslighting
+        # Aggressor dismisses victim's boundary request ("I'm not making personal comments, just telling the truth")
         # ----------------------------------------------------
-        # Case A: Contains teasing/sarcasm words ("genius", "pro athlete", "missed empty goal")
-        # BUT accompanied by laughter/emojis or answered by playful mutual teasing
-        is_teasing_with_laughter = (feat.has_laughter or feat.has_playful_emoji) and (feat.has_sarcasm_praise or feat.has_insult)
-        has_subsequent_laughter = (next_feat and (next_feat.has_laughter or next_feat.has_playful_emoji or next_feat.has_sarcasm_praise))
-        has_prior_laughter = (prev_feat and (prev_feat.has_laughter or prev_feat.has_playful_emoji))
+        if feat.has_dismissive and not feat.has_laughter:
+            had_prior_stop = any(f.has_explicit_stop_request for f in prior_features)
+            had_prior_protest = any(f.has_protest for f in prior_features)
+            if had_prior_stop or had_prior_protest or prior_hostile_count >= 1:
+                evidence.append("Speaker invalidates or dismisses the recipient's boundary request ('just telling the truth', 'not making personal comments').")
+                evidence.append("Gaslighting or persistent invalidation following a participant's explicit objection.")
+                alt_interp = "Speaker may believe their criticism is factual, but disregarding explicit boundaries maintains interpersonal hostility."
+                action = "Encourage objective dialogue and emphasize that personal boundaries must be respected."
+                return (
+                    "Potentially Harmful",
+                    0.74,
+                    "Moderate",
+                    "Boundary Invalidation / Dismissive Gaslighting",
+                    evidence,
+                    alt_interp,
+                    action,
+                    signals
+                )
 
-        if is_teasing_with_laughter or (has_reciprocal_laughter and (feat.has_sarcasm_praise or feat.has_laughter or "rematch" in feat.text_lower or "nobel" in feat.text_lower)):
-            signals.is_reciprocal_tease = True
-            evidence.append("Playful banter cues present (laughter expressions, laughing emojis, or self-deprecating humor).")
-            if has_subsequent_laughter or has_prior_laughter:
-                evidence.append("Mutual reciprocal participation: surrounding interlocutors responded with humor, playful escalation, or agreement.")
-            if is_known_friendly:
-                evidence.append(f"Contextual prior: Participants are identified as '{context_info.relationship}'.")
-
-            alt_interp = "If the recipient secretly feels uncomfortable, teasing could occasionally cross personal boundaries even if smiles/emojis are used."
-            action = "No intervention needed. Conversation demonstrates healthy peer banter. Check in with participants only if someone expresses discomfort."
-
+        # ----------------------------------------------------
+        # RULE 7.5: Defender Challenge / Silencing a Bystander
+        # Aggressor tries to silence someone who is standing up for the victim.
+        # "Mind your own business", "Nobody asked you", "Why are you always taking Sam's side?".
+        # ----------------------------------------------------
+        if feat.has_defender_challenge:
+            had_prior_bystander = any(f.has_bystander_defense for f in prior_features)
+            evidence.append("Speaker is attempting to silence or dismiss a bystander who was defending another participant ('Why are you always taking their side?', 'Nobody asked you').")
+            if had_prior_bystander:
+                evidence.append("Directly follows a bystander defence; the speaker is actively suppressing pro-social intervention.")
+            alt_interp = "Could be dismissiveness rather than intentional silencing, but in the context of ongoing hostility it reinforces the hostile dynamic."
+            action = "Monitor the pattern. Silencing bystanders is a common escalation tactic in group harassment."
             return (
-                "Friendly Banter",
-                0.89,
-                "High",
-                "Reciprocal Playful Banter",
+                "Potentially Harmful",
+                0.72,
+                "Moderate",
+                "Defender Challenge / Bystander Silencing",
                 evidence,
                 alt_interp,
                 action,
@@ -384,14 +698,36 @@ class ContextGuardAnalysisEngine:
             )
 
         # ----------------------------------------------------
-        # RULE 4: Sarcasm & Incomplete Context / Ambiguity
+        # RULE 7.8: Explicit Directed Verbal Abuse
+        # Short transcripts reduce certainty about intent, but do not erase
+        # observable directed abuse. Banter, reporting and protective rules
+        # above still take precedence; physical threats are handled first.
+        if feat.has_direct_abuse:
+            evidence.append("Explicit second-person insult or directed profane abuse detected.")
+            evidence.append("A short conversation does not make the abusive wording itself ambiguous.")
+            return (
+                "Potentially Harmful",
+                0.85,
+                "High",
+                "Explicit Directed Verbal Abuse",
+                evidence,
+                "Intent and relationship history may be unclear; this wording is still directly abusive.",
+                "Review the exchange and ask participants to stop the personal abuse. Check for threats and escalation.",
+                signals,
+            )
+
         # ----------------------------------------------------
-        # Example: "Wow, you're a real genius." followed by "What is that supposed to mean?"
+        # RULE 8: Sarcasm & Incomplete Context / Ambiguity
+        # Covers both sarcasm-praise markers ("real genius") and pure
+        # direct-insult lexicon without any playful tone.
+        # ----------------------------------------------------
         if feat.has_sarcasm_praise or (feat.has_insult and not feat.has_laughter):
             signals.is_sarcasm_suspect = True
-            evidence.append("Apparent hyperbolic praise or critical phrase ('genius', 'cool', etc.) lacking explicit positive markers.")
+            if feat.has_insult and not feat.has_sarcasm_praise:
+                evidence.append("Direct derogatory language or insult detected without playful tone markers.")
+            else:
+                evidence.append("Apparent hyperbolic praise or critical phrase ('genius', 'cool', etc.) lacking explicit positive markers.")
 
-            # Look forward: did the listener protest or ask for clarification?
             if next_feat and next_feat.has_protest:
                 evidence.append(f"Interlocutor responded with confusion or distress ('{next_msg.text}'), indicating potential negative emotional impact.")
                 alt_interp = "Could be deadpan humor between close peers, but the interlocutor's reaction demonstrates ambiguity or tension."
@@ -407,7 +743,6 @@ class ContextGuardAnalysisEngine:
                     signals
                 )
             
-            # Look forward: short conversation or abrupt ending ("Forget it")
             if total_msgs <= 3 or (next_msg and "forget it" in next_msg.text.lower()):
                 evidence.append("Conversation is brief or ended abruptly without resolving intent.")
                 alt_interp = "Could be harmless dry sarcasm, friendly teasing without emojis, or genuine veiled mockery. Text alone is insufficient."
@@ -423,7 +758,6 @@ class ContextGuardAnalysisEngine:
                     signals
                 )
 
-            # Isolated mild insult or sarcasm with no other hostile cues
             if prior_hostile_count == 0:
                 evidence.append("Single critical or sarcastic utterance without evidence of systematic targeting.")
                 alt_interp = "Could be standard banter or momentary irritation between equals."
@@ -454,7 +788,7 @@ class ContextGuardAnalysisEngine:
                 )
 
         # ----------------------------------------------------
-        # RULE 5: Interlocutor Protest or Invalidation
+        # RULE 9: General Interlocutor Protest / Distress
         # ----------------------------------------------------
         if feat.has_protest:
             signals.is_victim_protest = True
@@ -473,7 +807,7 @@ class ContextGuardAnalysisEngine:
             )
 
         # ----------------------------------------------------
-        # RULE 6: Harmless / Neutral Baseline
+        # RULE 10: Harmless / Neutral Baseline
         # ----------------------------------------------------
         evidence.append("Standard conversational turn without aggressive, exclusionary, or threatening indicators.")
         alt_interp = "Context appears neutral, though subtle offline in-jokes or coded slurs could remain invisible."
@@ -498,28 +832,55 @@ class ContextGuardAnalysisEngine:
         uncertain_count: int,
         banter_count: int,
         targeting_interactions: List[TargetingInteraction],
-        is_known_friendly: bool
+        is_known_friendly: bool,
+        has_direct_lethal_threat: bool,
+        has_confrontation_threat: bool,
+        has_retaliatory_escalation: bool,
+        has_boundary_fear: bool,
+        has_bystander_defense: bool = False,
+        has_stop_request: bool = False
     ) -> Tuple[str, float, str, List[str]]:
         """
         Synthesizes conversation-wide metrics into an explainable overall risk assessment.
+        Transparently separates critical lethal danger from high-risk confrontation threats.
         """
         recommendations: List[str] = []
 
-        # 1. Critical Risk: Physical Threats
-        if threat_count > 0:
+        # 1. Critical Risk: Explicit Physical Violence / Lethal Threats
+        # Appropriately conservative: reserved for explicit severe harm/death threats
+        if has_direct_lethal_threat:
             overall_risk = "Critical"
             risk_score = 92.0 + min(threat_count * 2.0, 7.0)
             summary = (
                 f"Critical safety concern detected: {threat_count} turn(s) contain explicit violent, physical, "
-                "or intimidating threat phrasing. Immediate review and safety measures are strongly advised."
+                "or lethal threat phrasing ('hurt', 'kill', etc.). Immediate safety protocols and emergency/authorities reporting required."
             )
             recommendations.append("Ensure immediate physical safety of targeted individuals.")
             recommendations.append("Preserve original screenshots, message timestamps, and user handles.")
-            recommendations.append("Report immediately to designated safeguarding leads, school authorities, or emergency support.")
+            recommendations.append("Report immediately to designated safeguarding leads, school/campus authorities, or emergency services.")
             return overall_risk, min(risk_score, 99.0), summary, recommendations
 
-        # 2. High Risk: Repeated Asymmetric Cyberbullying / Systematic Exclusion
-        has_asymmetric_repetition = any(t.is_asymmetric and t.harmful_turns >= 2 for t in targeting_interactions)
+        # 2. High Risk: Real-World In-Person Confrontation Threat & Intimidation Escalation
+        # Captures threats involving future location/time, retaliatory escalation following a complaint, or persistence after boundary assertion
+        if has_confrontation_threat or (threat_count >= 1 and (has_retaliatory_escalation or has_boundary_fear)) or threat_count >= 2:
+            overall_risk = "High"
+            bonus = min(threat_count * 2.5, 5.0) + (2.5 if has_boundary_fear else 0.0) + (2.0 if has_retaliatory_escalation else 0.0)
+            risk_score = min(88.0, 80.0 + bonus)
+            summary = (
+                f"High risk of real-world confrontation and harassment detected: {threat_count} turn(s) specify in-person targeting "
+                "or persistent intimidation following an abuse grievance. Immediate institutional review and protective measures are advised."
+            )
+            recommendations.append("Ensure physical safety and avoid isolated areas during specified timeframes (e.g. after college or work).")
+            recommendations.append("Preserve original screenshots, message timestamps, and user handles.")
+            recommendations.append("Report immediately to college administration, campus security, or local safeguarding officers.")
+            recommendations.append("Enforce strict no-contact boundaries between participants.")
+            return overall_risk, min(risk_score, 89.0), summary, recommendations
+
+        # 3. High Risk: Repeated Asymmetric Cyberbullying / Systematic Exclusion
+        has_asymmetric_repetition = any(
+            t.is_asymmetric and (t.harmful_turns >= 3 or (cyberbullying_count >= 1 and t.harmful_turns >= 2))
+            for t in targeting_interactions
+        )
         if cyberbullying_count >= 2 or has_asymmetric_repetition:
             overall_risk = "High"
             risk_score = 75.0 + min(cyberbullying_count * 5.0, 15.0)
@@ -532,32 +893,49 @@ class ContextGuardAnalysisEngine:
             recommendations.append("Apply group moderation or peer mediation according to community standards.")
             return overall_risk, min(risk_score, 89.0), summary, recommendations
 
-        # 3. Moderate Risk: Isolated Hostile Turn or Ambiguous Sarcasm with Distress
-        if harmful_count > 0 or (cyberbullying_count == 1 and not has_asymmetric_repetition):
+        # 4. Moderate Risk: Isolated Hostile Turn, Single Retaliatory Warning, or Ambiguous Sarcasm with Distress
+        if harmful_count > 0 or has_retaliatory_escalation or (cyberbullying_count == 1 and not has_asymmetric_repetition):
             overall_risk = "Moderate"
             risk_score = 45.0 + (harmful_count * 6.0)
             summary = (
                 f"Moderate concern: {harmful_count} potentially harmful turn(s) identified. "
-                "Evidence does not currently demonstrate persistent repeated targeting, but tone warrants monitoring."
+                "Evidence does not currently demonstrate persistent repeated confrontation, but tone warrants monitoring."
             )
             recommendations.append("Check in with the targeted participant to confirm whether the interaction felt hurtful.")
             recommendations.append("Encourage clear communication to clarify ambiguous or sarcastic statements.")
             recommendations.append("Monitor future exchanges for recurring conflict.")
-            return overall_risk, min(risk_score, 65.0), summary, recommendations
+            return overall_risk, min(risk_score, 68.0), summary, recommendations
 
-        # 4. Low Risk: Uncertain / Ambiguous Context
+        # 4.5. Moderate Risk: Protective Intervention or Unresolved Boundary Protest
+        # Guardrail: If a third-party bystander had to intervene to protect someone,
+        # or a participant asserted a boundary/stop request, and there is no reciprocal banter,
+        # the exchange cannot be silently dismissed as "Low Risk / Safe Interaction".
+        has_protective_or_stop = (has_bystander_defense or has_stop_request or has_boundary_fear)
+        if has_protective_or_stop and banter_count == 0:
+            overall_risk = "Moderate"
+            risk_score = 48.0 + min(harmful_count * 5.0, 15.0)
+            summary = (
+                "Moderate concern — Interpersonal boundary conflict detected: A participant asserted explicit boundaries "
+                "or a bystander intervened to de-escalate tension. Tone warrants human discernment and moderation monitoring."
+            )
+            recommendations.append("Acknowledge bystander intervention and confirm that personal boundaries are respected.")
+            recommendations.append("Check in with the targeted participant regarding recurring friction.")
+            recommendations.append("Monitor future exchanges to ensure hostility does not persist.")
+            return overall_risk, min(risk_score, 68.0), summary, recommendations
+
+        # 5. Low Risk: Uncertain / Ambiguous Context
         if uncertain_count > 0 and banter_count == 0:
             overall_risk = "Low"
-            risk_score = 25.0 + (uncertain_count * 4.0)
+            risk_score = 22.0 + (uncertain_count * 4.0)
             summary = (
-                f"Low-to-moderate uncertainty: {uncertain_count} turn(s) contain ambiguous phrases (such as deadpan sarcasm) "
-                "where intent cannot be reliably inferred without wider conversational history or voice tone."
+                f"Low-to-moderate uncertainty: {uncertain_count} turn(s) contain ambiguous phrases where intent "
+                "cannot be reliably inferred without wider conversational history or voice tone."
             )
             recommendations.append("Gather additional conversational turns before reaching conclusions.")
             recommendations.append("Avoid premature disciplinary actions based on isolated ambiguous remarks.")
             return overall_risk, min(risk_score, 38.0), summary, recommendations
 
-        # 5. Low Risk: Friendly Banter / Neutral
+        # 6. Low Risk: Friendly Banter / Neutral
         overall_risk = "Low"
         risk_score = max(5.0, 14.0 - (banter_count * 2.0))
         if banter_count > 0:

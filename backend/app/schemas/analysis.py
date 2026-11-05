@@ -20,6 +20,9 @@ class MessageSignal(BaseModel):
     is_reciprocal_tease: bool = False
     is_repeated_target: bool = False
     is_victim_protest: bool = False
+    is_retaliatory_threat: bool = False
+    has_confrontation: bool = False
+    has_intimidation: bool = False
 
 class MessageAnalysis(BaseModel):
     id: int
@@ -35,6 +38,7 @@ class MessageAnalysis(BaseModel):
     alternative_interpretation: Optional[str] = None
     suggested_action: str
     signals: MessageSignal
+    statistical_assessment: Optional[Dict[str, Any]] = None
 
 class ParticipantInfo(BaseModel):
     name: str

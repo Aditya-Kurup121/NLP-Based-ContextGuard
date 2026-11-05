@@ -1,0 +1,419 @@
+{
+  "dataset": "SetFit/toxic_conversations_50k",
+  "source_url": "https://huggingface.co/datasets/SetFit/toxic_conversations_50k",
+  "dataset_revision": "ef2009a5444b8a278c4d0782bcc549a01fd0163d",
+  "task": "Binary toxicity classification of standalone English comments, NOT conversation risk prediction",
+  "seed": 42,
+  "scikit_learn_version": "1.9.1",
+  "source_file_sha256": {
+    "train.jsonl": "e92ff39a269f8ee3b6a227781a12896b90b34bfa33919f1994bbc5dc0a669a18",
+    "test.jsonl": "b827bccd4c56e5e18ddf4c55fb410d37f661c15eb2b43aa250a933b6f4452254"
+  },
+  "split_sizes": {
+    "train": 39901,
+    "validation": 9976,
+    "test": 49757
+  },
+  "class_counts": {
+    "train": {
+      "0": 36733,
+      "1": 3168
+    },
+    "validation": {
+      "0": 9184,
+      "1": 792
+    },
+    "test": {
+      "0": 45817,
+      "1": 3940
+    }
+  },
+  "exact_cross_split_duplicates_removed": 117,
+  "selection_rule": "Highest validation macro-F1; fixed decision threshold 0.5; test never used for selection",
+  "selected_model": "tfidf_logistic_regression",
+  "models": {
+    "bow_naive_bayes_from_scratch": {
+      "validation": {
+        "accuracy": 0.9221130713712911,
+        "macro_f1": 0.6810096870954545,
+        "confusion_matrix": [
+          [
+            8936,
+            248
+          ],
+          [
+            529,
+            263
+          ]
+        ],
+        "per_class": {
+          "not toxic": {
+            "precision": 0.9441098784997358,
+            "recall": 0.9729965156794426,
+            "f1-score": 0.9583355675907556,
+            "support": 9184.0
+          },
+          "toxic": {
+            "precision": 0.5146771037181996,
+            "recall": 0.33207070707070707,
+            "f1-score": 0.4036838066001535,
+            "support": 792.0
+          },
+          "accuracy": 0.9221130713712911,
+          "macro avg": {
+            "precision": 0.7293934911089677,
+            "recall": 0.6525336113750748,
+            "f1-score": 0.6810096870954545,
+            "support": 9976.0
+          },
+          "weighted avg": {
+            "precision": 0.9100169797801111,
+            "recall": 0.9221130713712911,
+            "f1-score": 0.9143014662771471,
+            "support": 9976.0
+          }
+        }
+      },
+      "test": {
+        "accuracy": 0.9189661756134815,
+        "macro_f1": 0.6667408688727947,
+        "confusion_matrix": [
+          [
+            44506,
+            1311
+          ],
+          [
+            2721,
+            1219
+          ]
+        ],
+        "per_class": {
+          "not toxic": {
+            "precision": 0.9423846528468884,
+            "recall": 0.9713861667066809,
+            "f1-score": 0.9566656635570268,
+            "support": 45817.0
+          },
+          "toxic": {
+            "precision": 0.4818181818181818,
+            "recall": 0.30939086294416246,
+            "f1-score": 0.3768160741885626,
+            "support": 3940.0
+          },
+          "accuracy": 0.9189661756134815,
+          "macro avg": {
+            "precision": 0.7121014173325351,
+            "recall": 0.6403885148254217,
+            "f1-score": 0.6667408688727947,
+            "support": 49757.0
+          },
+          "weighted avg": {
+            "precision": 0.9059147713055354,
+            "recall": 0.9189661756134815,
+            "f1-score": 0.9107503675763257,
+            "support": 49757.0
+          }
+        }
+      }
+    },
+    "bow_naive_bayes": {
+      "validation": {
+        "accuracy": 0.9221130713712911,
+        "macro_f1": 0.6810096870954545,
+        "confusion_matrix": [
+          [
+            8936,
+            248
+          ],
+          [
+            529,
+            263
+          ]
+        ],
+        "per_class": {
+          "not toxic": {
+            "precision": 0.9441098784997358,
+            "recall": 0.9729965156794426,
+            "f1-score": 0.9583355675907556,
+            "support": 9184.0
+          },
+          "toxic": {
+            "precision": 0.5146771037181996,
+            "recall": 0.33207070707070707,
+            "f1-score": 0.4036838066001535,
+            "support": 792.0
+          },
+          "accuracy": 0.9221130713712911,
+          "macro avg": {
+            "precision": 0.7293934911089677,
+            "recall": 0.6525336113750748,
+            "f1-score": 0.6810096870954545,
+            "support": 9976.0
+          },
+          "weighted avg": {
+            "precision": 0.9100169797801111,
+            "recall": 0.9221130713712911,
+            "f1-score": 0.9143014662771471,
+            "support": 9976.0
+          }
+        }
+      },
+      "test": {
+        "accuracy": 0.9189661756134815,
+        "macro_f1": 0.6667408688727947,
+        "confusion_matrix": [
+          [
+            44506,
+            1311
+          ],
+          [
+            2721,
+            1219
+          ]
+        ],
+        "per_class": {
+          "not toxic": {
+            "precision": 0.9423846528468884,
+            "recall": 0.9713861667066809,
+            "f1-score": 0.9566656635570268,
+            "support": 45817.0
+          },
+          "toxic": {
+            "precision": 0.4818181818181818,
+            "recall": 0.30939086294416246,
+            "f1-score": 0.3768160741885626,
+            "support": 3940.0
+          },
+          "accuracy": 0.9189661756134815,
+          "macro avg": {
+            "precision": 0.7121014173325351,
+            "recall": 0.6403885148254217,
+            "f1-score": 0.6667408688727947,
+            "support": 49757.0
+          },
+          "weighted avg": {
+            "precision": 0.9059147713055354,
+            "recall": 0.9189661756134815,
+            "f1-score": 0.9107503675763257,
+            "support": 49757.0
+          }
+        }
+      }
+    },
+    "tfidf_naive_bayes": {
+      "validation": {
+        "accuracy": 0.9207097032878909,
+        "macro_f1": 0.4818705283025434,
+        "confusion_matrix": [
+          [
+            9183,
+            1
+          ],
+          [
+            790,
+            2
+          ]
+        ],
+        "per_class": {
+          "not toxic": {
+            "precision": 0.9207861225308333,
+            "recall": 0.9998911149825784,
+            "f1-score": 0.9587096100642063,
+            "support": 9184.0
+          },
+          "toxic": {
+            "precision": 0.6666666666666666,
+            "recall": 0.0025252525252525255,
+            "f1-score": 0.005031446540880503,
+            "support": 792.0
+          },
+          "accuracy": 0.9207097032878909,
+          "macro avg": {
+            "precision": 0.7937263945987499,
+            "recall": 0.5012081837539155,
+            "f1-score": 0.4818705283025434,
+            "support": 9976.0
+          },
+          "weighted avg": {
+            "precision": 0.9006114423940631,
+            "recall": 0.9207097032878909,
+            "f1-score": 0.8829965882608308,
+            "support": 9976.0
+          }
+        }
+      },
+      "test": {
+        "accuracy": 0.9214783849508612,
+        "macro_f1": 0.48810631188119624,
+        "confusion_matrix": [
+          [
+            45816,
+            1
+          ],
+          [
+            3906,
+            34
+          ]
+        ],
+        "per_class": {
+          "not toxic": {
+            "precision": 0.9214432243272596,
+            "recall": 0.9999781740402034,
+            "f1-score": 0.9591057055233988,
+            "support": 45817.0
+          },
+          "toxic": {
+            "precision": 0.9714285714285714,
+            "recall": 0.008629441624365483,
+            "f1-score": 0.01710691823899371,
+            "support": 3940.0
+          },
+          "accuracy": 0.9214783849508612,
+          "macro avg": {
+            "precision": 0.9464358978779155,
+            "recall": 0.5043038078322845,
+            "f1-score": 0.48810631188119624,
+            "support": 49757.0
+          },
+          "weighted avg": {
+            "precision": 0.9254013059555565,
+            "recall": 0.9214783849508612,
+            "f1-score": 0.8845136838601041,
+            "support": 49757.0
+          }
+        }
+      }
+    },
+    "tfidf_logistic_regression": {
+      "validation": {
+        "accuracy": 0.9023656776263032,
+        "macro_f1": 0.7249630552524946,
+        "confusion_matrix": [
+          [
+            8507,
+            677
+          ],
+          [
+            297,
+            495
+          ]
+        ],
+        "per_class": {
+          "not toxic": {
+            "precision": 0.9662653339391186,
+            "recall": 0.9262848432055749,
+            "f1-score": 0.9458527907493884,
+            "support": 9184.0
+          },
+          "toxic": {
+            "precision": 0.42235494880546076,
+            "recall": 0.625,
+            "f1-score": 0.5040733197556008,
+            "support": 792.0
+          },
+          "accuracy": 0.9023656776263032,
+          "macro avg": {
+            "precision": 0.6943101413722896,
+            "recall": 0.7756424216027875,
+            "f1-score": 0.7249630552524946,
+            "support": 9976.0
+          },
+          "weighted avg": {
+            "precision": 0.9230839962260214,
+            "recall": 0.9023656776263032,
+            "f1-score": 0.9107796811837228,
+            "support": 9976.0
+          }
+        }
+      },
+      "test": {
+        "accuracy": 0.9026267660831642,
+        "macro_f1": 0.7242737023618018,
+        "confusion_matrix": [
+          [
+            42465,
+            3352
+          ],
+          [
+            1493,
+            2447
+          ]
+        ],
+        "per_class": {
+          "not toxic": {
+            "precision": 0.9660357614086174,
+            "recall": 0.926839382761857,
+            "f1-score": 0.946031746031746,
+            "support": 45817.0
+          },
+          "toxic": {
+            "precision": 0.4219693050525953,
+            "recall": 0.6210659898477158,
+            "f1-score": 0.5025156586918574,
+            "support": 3940.0
+          },
+          "accuracy": 0.9026267660831642,
+          "macro avg": {
+            "precision": 0.6940025332306063,
+            "recall": 0.7739526863047863,
+            "f1-score": 0.7242737023618018,
+            "support": 49757.0
+          },
+          "weighted avg": {
+            "precision": 0.9229539470298821,
+            "recall": 0.9026267660831642,
+            "f1-score": 0.9109119963659871,
+            "support": 49757.0
+          }
+        }
+      }
+    }
+  },
+  "majority_baseline": {
+    "accuracy": 0.9208151616857929,
+    "macro_f1": 0.47938769958356875,
+    "confusion_matrix": [
+      [
+        45817,
+        0
+      ],
+      [
+        3940,
+        0
+      ]
+    ],
+    "per_class": {
+      "not toxic": {
+        "precision": 0.9208151616857929,
+        "recall": 1.0,
+        "f1-score": 0.9587753991671375,
+        "support": 45817.0
+      },
+      "toxic": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 3940.0
+      },
+      "accuracy": 0.9208151616857929,
+      "macro avg": {
+        "precision": 0.46040758084289646,
+        "recall": 0.5,
+        "f1-score": 0.47938769958356875,
+        "support": 49757.0
+      },
+      "weighted avg": {
+        "precision": 0.847900561990433,
+        "recall": 0.9208151616857929,
+        "f1-score": 0.8828549242044484,
+        "support": 49757.0
+      }
+    }
+  },
+  "limitations": [
+    "Comment labels are not conversation-level cyberbullying or intent labels.",
+    "Exact normalized duplicates are removed; near duplicates and source-thread overlap cannot be ruled out.",
+    "The source does not supply conversation/thread identifiers in these files.",
+    "No claim of probability calibration, fairness, or Hindi/Hinglish performance."
+  ]
+}

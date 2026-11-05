@@ -2,8 +2,14 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
+from dotenv import load_dotenv
+from pathlib import Path
+
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 from backend.app.api.routes import router
+from backend.app.api.nlp_routes import router as nlp_router
+from backend.app.api.import_routes import router as import_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("ContextGuard")
@@ -24,6 +30,8 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(nlp_router)
+app.include_router(import_router)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

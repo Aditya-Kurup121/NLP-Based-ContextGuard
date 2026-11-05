@@ -25,3 +25,8 @@ Thumbs.db
 # IDEs
 .idea/
 .vscode/
+
+# Downloaded corpora and locally trained models (regenerate with backend.training.train)
+backend/data/raw/
+backend/artifacts/*.joblib
+backend/artifacts/*.tokenizer.json
