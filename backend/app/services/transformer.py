@@ -6,9 +6,16 @@ Two optional models:
 
 If torch/transformers are not installed or a model has not been trained, the
 matching functions return None and the rest of the app works as before.
+
+Low-memory hosting (e.g. a 512 MB free tier): TRANSFORMER_BATCH_SIZE sets messages per
+forward pass (default 32), and model calls are serialised with a lock so parallel
+requests don't multiply memory. Weights are memory-mapped from safetensors, so the
+OS can page them out under pressure (int8 quantization was tried and used more RAM).
 """
 import json
 import logging
+import os
+import threading
 from functools import lru_cache
 from pathlib import Path
 
@@ -18,7 +25,8 @@ logger = logging.getLogger("ContextGuard")
 ARTIFACTS = Path(__file__).resolve().parents[2] / "artifacts"
 MODEL_DIR = ARTIFACTS / "transformer"
 CONTEXT_MODEL_DIR = ARTIFACTS / "context_model"
-BATCH_SIZE = 32
+BATCH_SIZE = int(os.getenv("TRANSFORMER_BATCH_SIZE", "32"))
+_inference_lock = threading.Lock()
 
 
 def _load(model_dir):
@@ -70,7 +78,7 @@ def _probabilities(loaded, examples, turns, speaker_tags, max_length):
     import torch
     model, tokenizer, _, device = loaded
     out = []
-    with torch.no_grad():
+    with _inference_lock, torch.no_grad():
         for start in range(0, len(examples), BATCH_SIZE):
             batch = encode(tokenizer, examples[start:start + BATCH_SIZE], turns, speaker_tags, max_length).to(device)
             out.extend(torch.softmax(model(**batch).logits.float(), dim=-1)[:, 1].cpu().tolist())

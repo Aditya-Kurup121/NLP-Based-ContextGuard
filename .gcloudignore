@@ -1,0 +1,19 @@
+# Files not uploaded by `gcloud run deploy --source .` (mirrors .dockerignore).
+.git
+.venv
+venv
+.claude
+.env
+.env.*
+**/__pycache__
+**/*.pyc
+.pytest_cache
+frontend
+annotation
+backend/data
+backend/artifacts/transformer
+backend/artifacts/context_model*
+backend/artifacts/*.joblib
+backend/artifacts/*.tokenizer.json
+backend/training/candidates
+*.md

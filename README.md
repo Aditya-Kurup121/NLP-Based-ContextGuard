@@ -138,7 +138,7 @@ Backend will be active at:
 
 *(Alternatively, run `.\Start-ContextGuard.ps1` from the project root to start both backend and frontend servers in one command).*
 
-**Deploying online:** frontend on Vercel, backend on a Hugging Face Space, weights on the Hugging Face Hub. Step-by-step in [DEPLOY.md](DEPLOY.md).
+**Deploying online:** frontend on Vercel, backend on Render (both free, no card), weights in a private Hugging Face model repo. Step-by-step in [DEPLOY.md](DEPLOY.md).
 
 ---
 

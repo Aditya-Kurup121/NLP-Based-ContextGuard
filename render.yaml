@@ -1,0 +1,26 @@
+# Render Blueprint: free web service for the ContextGuard API.
+# Render dashboard -> New -> Blueprint -> pick this repo. Fill in the three
+# values marked sync: false when asked.
+services:
+  - type: web
+    name: contextguard-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: MODEL_REPO          # e.g. contextguard-team/contextguard-models
+        sync: false
+      - key: HF_TOKEN            # read-only Hugging Face token
+        sync: false
+      - key: CORS_ORIGINS        # your Vercel URL, e.g. https://contextguard.vercel.app
+        sync: false
+      # Fit the 512 MB free instance
+      - key: TRANSFORMER_BATCH_SIZE
+        value: "8"
+      - key: MALLOC_ARENA_MAX
+        value: "2"
+      - key: OMP_NUM_THREADS
+        value: "1"
