@@ -25,9 +25,12 @@ app = FastAPI(
 # The API uses no cookies, so credentials are not allowed.
 DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",") if o.strip()]
+# Optional pattern for preview deployments, e.g. https://contextguard-[a-z0-9-]+\.vercel\.app
+cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX") or None
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    allow_origin_regex=cors_origin_regex,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
