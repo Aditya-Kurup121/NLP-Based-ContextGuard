@@ -152,6 +152,19 @@ export const MessageDetailModal: React.FC<MessageDetailModalProps> = ({ message,
           <div className="feature-chips">{message.statistical_assessment.top_features.map(feature => <span key={feature.term} title={`Contribution to toxic log-odds: ${feature.contribution}`} className={feature.contribution > 0 ? 'toward-toxic' : 'away-toxic'}>{feature.term} {feature.contribution > 0 ? '+' : '−'}</span>)}</div>
           <p className="lab-note">{message.statistical_assessment.note} Feature contributions describe this model, not the speaker’s intent.</p>
         </section>}
+        {message.transformer_assessment && <section className="statistical-evidence">
+          <p className="eyebrow">A THIRD LOCAL SIGNAL</p>
+          <h3>What the fine-tuned transformer sees</h3>
+          <p><strong>{message.transformer_assessment.label}</strong> · score {message.transformer_assessment.toxicity_score.toFixed(3)} (flags at ≥ {message.transformer_assessment.threshold.toFixed(2)}) · {message.transformer_assessment.model}</p>
+          <p className="lab-note">{message.transformer_assessment.note}</p>
+        </section>}
+        {message.context_assessment && <section className="statistical-evidence">
+          <p className="eyebrow">WITH THE REPLIES BEFORE IT</p>
+          <h3>What the context-aware transformer sees</h3>
+          <p><strong>{message.context_assessment.label}</strong> · score {message.context_assessment.toxicity_score.toFixed(3)} (flags at ≥ {message.context_assessment.threshold.toFixed(2)}) · read with {message.context_assessment.context_turns_used} previous turn{message.context_assessment.context_turns_used === 1 ? '' : 's'}</p>
+          {message.transformer_assessment && message.transformer_assessment.label !== message.context_assessment.label && <p className="lab-note"><strong>Context changed the reading:</strong> on its own this message reads as “{message.transformer_assessment.label}”; with the earlier turns it reads as “{message.context_assessment.label}”.</p>}
+          <p className="lab-note">{message.context_assessment.note} {message.context_assessment.model}.</p>
+        </section>}
         <div className="space-y-4 mb-6">
           {/* Detected Pattern */}
           <div className="p-3.5 rounded-xl bg-stone-200/40 border border-stone-200">

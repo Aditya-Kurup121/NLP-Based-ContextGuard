@@ -21,7 +21,7 @@ import type {
 } from '../services/nlp';
 
 const displayName = (name: string) =>
-  name.replaceAll('_', ' ').replace('bow', 'BoW').replace('tfidf', 'TF-IDF');
+  name.replaceAll('_', ' ').replace('bow', 'BoW').replace('tfidf', 'TF-IDF').replace('distilbert', 'DistilBERT');
 const percent = (value: number) => (value * 100).toFixed(1) + '%';
 
 export function NlpWorkbench({ conversation }: { conversation: string }) {
@@ -61,6 +61,8 @@ export function NlpWorkbench({ conversation }: { conversation: string }) {
 
   // CO2: Word2Vec states
   const [w2vStatus, setW2vStatus] = useState<Word2VecStatus | null>(null);
+  // Set after retraining; queries then use this user's own model instead of the shared default.
+  const w2vModelId = w2vStatus?.model_id;
   const [w2vQueryWord, setW2vQueryWord] = useState('friend');
   const [w2vVector, setW2vVector] = useState<{ word: string; dimensions: number; vector: number[] } | null>(null);
   const [simWord1, setSimWord1] = useState('friend');
@@ -155,6 +157,7 @@ export function NlpWorkbench({ conversation }: { conversation: string }) {
     try {
       const res = await nlpRequest<{ word: string; dimensions: number; vector: number[] }>('/word2vec/vector', {
         word: w2vQueryWord,
+        model_id: w2vModelId,
       });
       setW2vVector(res);
     } catch (e) {
@@ -170,7 +173,7 @@ export function NlpWorkbench({ conversation }: { conversation: string }) {
     try {
       const res = await nlpRequest<{ word1: string; word2: string; cosine_similarity: number; interpretation: string }>(
         '/word2vec/similarity',
-        { word1: simWord1, word2: simWord2 }
+        { word1: simWord1, word2: simWord2, model_id: w2vModelId }
       );
       setSimResult(res);
     } catch (e) {
@@ -187,6 +190,7 @@ export function NlpWorkbench({ conversation }: { conversation: string }) {
       const res = await nlpRequest<{ query: string; nearest_neighbors: WordNeighbor[] }>('/word2vec/similar', {
         word: neighborQuery,
         top_n: 6,
+        model_id: w2vModelId,
       });
       setNeighbors(res.nearest_neighbors);
     } catch (e) {
@@ -204,6 +208,7 @@ export function NlpWorkbench({ conversation }: { conversation: string }) {
         a: analogyA,
         b: analogyB,
         c: analogyC,
+        model_id: w2vModelId,
       });
       setAnalogyResult(res);
     } catch (e) {

@@ -14,10 +14,11 @@ from backend.app.services.nlp import (
     manual_vectorization,
 )
 from backend.app.services.hosted import hosted_status, review_conversation
+from backend.app.services.transformer import context_model_status, transformer_status
 from backend.app.services.levenshtein import compute_levenshtein
 from backend.app.services.word2vec import (
     get_word2vec_model,
-    retrain_word2vec_model,
+    train_custom_word2vec_model,
     DEFAULT_CORPUS,
 )
 from backend.app.services.hmm_tagger import get_hmm_tagger
@@ -45,22 +46,26 @@ class LevenshteinRequest(BaseModel):
 
 class Word2VecVectorRequest(BaseModel):
     word: str = Field(min_length=1, max_length=50)
+    model_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class Word2VecSimilarityRequest(BaseModel):
     word1: str = Field(min_length=1, max_length=50)
     word2: str = Field(min_length=1, max_length=50)
+    model_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class Word2VecSimilarRequest(BaseModel):
     word: str = Field(min_length=1, max_length=50)
     top_n: int = Field(default=6, ge=1, le=20)
+    model_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class Word2VecAnalogyRequest(BaseModel):
     a: str = Field(min_length=1, max_length=50)
     b: str = Field(min_length=1, max_length=50)
     c: str = Field(min_length=1, max_length=50)
+    model_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class Word2VecTrainRequest(BaseModel):
@@ -70,6 +75,13 @@ class Word2VecTrainRequest(BaseModel):
 
 class HmmTagRequest(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
+
+
+def resolve_w2v(model_id: Optional[str]):
+    try:
+        return get_word2vec_model(model_id)
+    except KeyError:
+        raise HTTPException(404, "Custom Word2Vec model not found (it may have expired). Retrain it or use the default model.")
 
 
 @lru_cache(maxsize=1)
@@ -84,7 +96,9 @@ def nlp_status():
     return {
         "classifier_loaded": classifier() is not None,
         "linguistic_model_loaded": linguistic_model() is not None,
-        "local_transformer_loaded": False,
+        "local_transformer_loaded": transformer_status()["loaded"],
+        "transformer": transformer_status(),
+        "context_model": context_model_status(),
         "word2vec_loaded": len(w2v.vocab) > 0,
         "hmm_tagger_loaded": True,
         "hosted": hosted_status(),
@@ -129,7 +143,7 @@ def word2vec_status():
 
 @router.post("/word2vec/vector")
 def word2vec_vector(request: Word2VecVectorRequest):
-    w2v = get_word2vec_model()
+    w2v = resolve_w2v(request.model_id)
     vector = w2v.get_vector(request.word)
     if vector is None:
         raise HTTPException(404, f"Word '{request.word}' is out of vocabulary.")
@@ -142,7 +156,7 @@ def word2vec_vector(request: Word2VecVectorRequest):
 
 @router.post("/word2vec/similarity")
 def word2vec_similarity(request: Word2VecSimilarityRequest):
-    w2v = get_word2vec_model()
+    w2v = resolve_w2v(request.model_id)
     sim = w2v.cosine_similarity(request.word1, request.word2)
     if sim is None:
         missing = []
@@ -161,7 +175,7 @@ def word2vec_similarity(request: Word2VecSimilarityRequest):
 
 @router.post("/word2vec/similar")
 def word2vec_similar(request: Word2VecSimilarRequest):
-    w2v = get_word2vec_model()
+    w2v = resolve_w2v(request.model_id)
     if request.word.lower().strip() not in w2v.vocab:
         raise HTTPException(404, f"Word '{request.word}' is out of vocabulary. Try: {', '.join(w2v.inv_vocab[:10])}")
     neighbors = w2v.nearest_neighbors(request.word, top_n=request.top_n)
@@ -173,7 +187,7 @@ def word2vec_similar(request: Word2VecSimilarRequest):
 
 @router.post("/word2vec/analogy")
 def word2vec_analogy(request: Word2VecAnalogyRequest):
-    w2v = get_word2vec_model()
+    w2v = resolve_w2v(request.model_id)
     for w in (request.a, request.b, request.c):
         if w.lower().strip() not in w2v.vocab:
             raise HTTPException(404, f"Word '{w}' is out of vocabulary.")
@@ -187,9 +201,10 @@ def word2vec_analogy(request: Word2VecAnalogyRequest):
 @router.post("/word2vec/train")
 def word2vec_train(request: Word2VecTrainRequest):
     try:
-        model = retrain_word2vec_model(request.corpus, epochs=request.epochs)
+        model_id, model = train_custom_word2vec_model(request.corpus, epochs=request.epochs)
         return {
             "status": "trained",
+            "model_id": model_id,
             **model.get_summary(),
         }
     except Exception as exc:
@@ -198,7 +213,9 @@ def word2vec_train(request: Word2VecTrainRequest):
 
 @router.post("/hmm/tag")
 def hmm_pos_tag(request: HmmTagRequest):
-    tokens = re.findall(r"\w+(?:['’]\w+)*|[^\w\s]", request.text.strip())
+    text = request.text.strip()
+    matches = list(re.finditer(r"\w+(?:['’]\w+)*|[^\w\s]", text))
+    tokens = [m.group() for m in matches]
     if not tokens:
         raise HTTPException(400, "Provide valid text to tag.")
     hmm = get_hmm_tagger()
@@ -206,9 +223,12 @@ def hmm_pos_tag(request: HmmTagRequest):
     nlp = linguistic_model()
     spacy_tags = []
     if nlp:
-        doc = nlp(request.text)
-        spacy_map = {t.text: t.pos_ for t in doc}
-        spacy_tags = [spacy_map.get(tok, "X") for tok in tokens]
+        # Align by character position, not token text, so repeated words
+        # ("I said I would") each get their own spaCy tag.
+        doc = nlp(text)
+        for m in matches:
+            span = doc.char_span(m.start(), m.end(), alignment_mode="expand")
+            spacy_tags.append(span[0].pos_ if span is not None and len(span) else "X")
 
     comparison = []
     for i, tok in enumerate(tokens):

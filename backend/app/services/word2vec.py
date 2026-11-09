@@ -1,7 +1,9 @@
 """Educational Word2Vec (Skip-gram) model implemented in NumPy with analogies and cosine similarity."""
 import math
 import re
-from collections import Counter
+import threading
+import uuid
+from collections import Counter, OrderedDict
 from typing import List, Dict, Any, Optional, Tuple
 import numpy as np
 
@@ -212,8 +214,21 @@ class EducationalWord2Vec:
 _global_w2v: Optional[EducationalWord2Vec] = None
 
 
-def get_word2vec_model() -> EducationalWord2Vec:
+# Custom models trained from the workbench. Each gets its own id so one user's
+# retraining never replaces the shared default model for everyone else.
+MAX_CUSTOM_MODELS = 16
+_custom_models: "OrderedDict[str, EducationalWord2Vec]" = OrderedDict()
+_custom_lock = threading.Lock()
+
+
+def get_word2vec_model(model_id: Optional[str] = None) -> EducationalWord2Vec:
+    """Return the default model, or a custom one by id. Raises KeyError for an unknown id."""
     global _global_w2v
+    if model_id:
+        with _custom_lock:
+            model = _custom_models[model_id]
+            _custom_models.move_to_end(model_id)
+            return model
     if _global_w2v is None:
         model = EducationalWord2Vec(embedding_dim=32, window_size=2, learning_rate=0.06)
         model.fit(DEFAULT_CORPUS, epochs=45)
@@ -221,10 +236,14 @@ def get_word2vec_model() -> EducationalWord2Vec:
     return _global_w2v
 
 
-def retrain_word2vec_model(sentences: List[str], epochs: int = 35) -> EducationalWord2Vec:
-    global _global_w2v
+def train_custom_word2vec_model(sentences: List[str], epochs: int = 35) -> Tuple[str, EducationalWord2Vec]:
+    """Train a separate model and store it under a new id (oldest evicted beyond MAX_CUSTOM_MODELS)."""
     model = EducationalWord2Vec(embedding_dim=32, window_size=2, learning_rate=0.06)
     model.fit(sentences, epochs=epochs)
-    _global_w2v = model
-    return model
+    model_id = uuid.uuid4().hex
+    with _custom_lock:
+        _custom_models[model_id] = model
+        while len(_custom_models) > MAX_CUSTOM_MODELS:
+            _custom_models.popitem(last=False)
+    return model_id, model
 

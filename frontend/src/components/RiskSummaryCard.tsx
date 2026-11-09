@@ -163,6 +163,21 @@ export const RiskSummaryCard: React.FC<RiskSummaryCardProps> = ({ results }) => 
         </p>
       </div>
 
+      {results.learned_risk && (
+        <div className="mb-6 p-4 rounded-xl bg-stone-100/50 border border-stone-200/90">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-emerald-700 mb-2">Learned risk (second opinion)</h3>
+          <p className="text-sm text-stone-800">
+            <strong>{results.learned_risk.risk}</strong>
+            {results.learned_risk.risk !== overall_risk && <> · differs from the rule-based <strong>{overall_risk}</strong></>}
+            {' · '}
+            {Object.entries(results.learned_risk.probabilities).map(([level, p]) => `${level} ${(p * 100).toFixed(0)}%`).join(', ')}
+          </p>
+          <p className="text-xs text-stone-600 mt-1">
+            Trained on {results.learned_risk.trained_on.conversations} labelled conversations. {results.learned_risk.note}
+          </p>
+        </div>
+      )}
+
       {/* Actionable Next Steps */}
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-600 mb-3 flex items-center space-x-1.5">

@@ -2,7 +2,7 @@
 
 ## Run the project
 
-From this project directory, run `./Start-ContextGuard.ps1`. It starts the backend and frontend in hidden processes, checks both HTTP endpoints, and prints the preview URL. Add `-OpenBrowser` to open your default browser. It uses the bundled Node runtime when available, avoiding this machine's unsupported Node 22.11 runtime.
+From this project directory, run `./Start-ContextGuard.ps1`. It starts the backend and frontend in hidden processes, checks both HTTP endpoints, and prints the preview URL. Add `-OpenBrowser` to open your default browser. It needs Node.js on PATH and `npm install` already run in `frontend`.
 
 The working Python environment is `.venv`, not the old `venv` copied from a different Windows account. Backend dependencies are in `backend/requirements.txt`. After changing backend sources or model artifacts, restart the project's backend. The frontend supports hot reload.
 
@@ -18,7 +18,7 @@ uv pip install --python .venv/Scripts/python.exe https://github.com/explosion/sp
 ./.venv/Scripts/python.exe -m pytest backend/tests -q
 ```
 
-These workloads run on CPU. An RTX 3050 is not required. No GPU VRAM size is assumed. This implementation does not install large transformer weights or claim to fine-tune an LLM.
+The classical models run on CPU. The optional DistilBERT fine-tune (below) needs PyTorch and is practical on a GPU: about 15 minutes on an RTX 3050 Laptop GPU (4 GB). Without it the app works as before and simply omits the transformer score.
 
 ## What is implemented
 
@@ -47,11 +47,112 @@ The downloader records a repository revision. Training records file SHA256 hashe
 - Report the held-out source test once after model selection. It is not used to select the model.
 - Subword vocabularies are also trained only on the training partition; they demonstrate segmentation and are not pretrained transformer tokenizers.
 
-The current run has 39,901 training, 9,976 validation and 49,757 test comments. Selected TF-IDF Logistic Regression: test macro-F1 0.724, toxic precision 0.422, toxic recall 0.621. Accuracy is 0.903, lower than the majority baseline's accuracy because it trades false positives for toxic recall. Always show macro-F1 and class-specific metrics alongside accuracy.
+The current run has 39,901 training, 9,976 validation and 49,757 test comments.
+
+| Model (held-out test) | Macro-F1 | Toxic precision | Toxic recall | Accuracy |
+|---|---|---|---|---|
+| Majority baseline | 0.479 | 0.000 | 0.000 | 0.921 |
+| BoW Naive Bayes (from scratch = scikit-learn) | 0.667 | 0.482 | 0.309 | 0.919 |
+| TF-IDF Logistic Regression | 0.724 | 0.422 | 0.621 | 0.903 |
+| **DistilBERT fine-tuned** (selected) | **0.801** | **0.634** | **0.632** | **0.942** |
+
+TF-IDF Logistic Regression's accuracy is below the majority baseline because it trades false positives for toxic recall; DistilBERT is the only model that beats the baseline on accuracy as well. Always show macro-F1 and class-specific metrics alongside accuracy. A TF-IDF Naive Bayes variant was dropped: at the fixed 0.5 threshold it caught under 1% of toxic comments.
+
+## Fine-tuned transformer (DistilBERT)
+
+```powershell
+uv pip install --python .venv/Scripts/python.exe torch --index-url https://download.pytorch.org/whl/cu128
+uv pip install --python .venv/Scripts/python.exe -r backend/requirements-transformer.txt
+./.venv/Scripts/python.exe -m backend.training.train_transformer
+```
+
+Run it **after** `backend.training.train`: it adds its row to the same `evaluation.json` (re-running `train` rewrites that file, so re-run the transformer afterwards).
+
+- Same deduplicated train / validation / test split as the classical models (seed 42), so the comparison is like-for-like.
+- `distilbert-base-uncased`, 2 epochs, max 128 tokens, batch 16, AdamW lr 3e-5 with linear warm-up, mixed precision, class-weighted loss for the ~8% toxic class.
+- The best epoch and the decision threshold (0.64) are chosen on validation macro-F1. Test is scored once afterwards. At the default 0.5 threshold test macro-F1 is also 0.801 (precision 0.614, recall 0.656), so the gain is not a threshold artefact.
+- Weights (~260 MB) are saved to `backend/artifacts/transformer/` and are not committed. The backend loads them if present (GPU if available, otherwise CPU) and adds a `transformer_assessment` to every analysed message; scoring a 13-message conversation takes ~15 ms on the GPU.
+- Limits: it reads one message at a time, so it does not see conversation context; scores are not calibrated probabilities; English comments only. The context-aware model below addresses the first point.
 
 Exact deduplication does not eliminate near duplicates. Thread/author identifiers are not supplied, so source-thread or author separation cannot be verified. Scores are not calibrated probabilities. English comment performance does not establish chat, sarcasm, demographic fairness or Hindi/Hinglish performance.
 
 The original 10-conversation demo benchmark remains separate. It is a regression demonstration, not evidence of 100% real-world performance.
+
+## Context-aware model (Phase 3, in progress)
+
+Goal: score each message **together with the turns before it**, so "you're an idiot 😂" between joking friends, "please stop" from a victim, and "good, you deserve it" after "I failed my exam" are read correctly.
+
+### Reproduce
+
+```powershell
+./.venv/Scripts/python.exe -m backend.training.context_data            # download + convert public datasets
+./.venv/Scripts/python.exe -m backend.training.synthetic_conversations # template conversations (stand-in data)
+./.venv/Scripts/python.exe -m backend.training.train_context --synthetic --variants message_only context_tags_cf context_no_tags_cf
+./.venv/Scripts/python.exe -m backend.training.train_combiner --synthetic
+```
+
+Needs the Phase 2 model (`train_transformer`) first. About 1 hour on an RTX 3050 Laptop GPU.
+
+### Data
+
+| Source | What it adds | Licence / terms |
+|---|---|---|
+| [CCC](https://github.com/ipavlopoulos/context_toxicity) (Xenos et al., 2021) | 9,929 posts with toxicity judged **with and without** the parent post; 678 labels flip when the parent is shown | Apache-2.0 repository |
+| [CONDA](https://github.com/usydnlp/CONDA) (Weld et al., 2021) | Dota 2 match chats, turn-level explicit/implicit toxicity, speaker ids | No licence file; used for academic research with citation, not redistributed. Its test split is unlabelled, so its validation split is our test. |
+| [DiaSafety](https://github.com/thu-coai/DiaSafety) (Sun et al., 2022) | Context + reply pairs; only *Offending User* and *Toxicity Agreement* kept | Apache-2.0 repository |
+| Synthetic (`synthetic_conversations.py`) | 3,000 template conversations (12 scenarios incl. victim replies, bystanders, exclusion, threats, Hinglish) | Generated here |
+
+Splits are grouped by conversation/post, so no conversation is in two splits. Raw and processed data are git-ignored.
+
+**Synthetic data rules.** Every phrase pool is split in half: training conversations use only half A, the synthetic test uses only half B, so that score measures unseen wording. A leakage check rejects the data if any phrase is too close (word-Jaccard ≥ 0.55) to the challenge set; the first draft failed this check (three exact copies) and was reworded. Synthetic chat is cleaner than real chat: treat it as a placeholder until `annotation/gold.jsonl` exists.
+
+### Input format
+
+`[CLS] [OTHER] earlier turn [SAME] earlier turn … [SEP] message being scored [SEP]` — up to 3 previous turns; `[SAME]`/`[OTHER]` say whether the earlier turn has the same author as the scored message (names are never given to the model); oldest context is truncated first. Shared by training and serving in `backend/app/services/context_format.py`.
+
+### Behaviour gate
+
+`backend/training/context_challenge.py` holds 32 hand-written cases (victim replies, bystander defence, neutral messages in toxic threads, banter replies, abuse after a stop request, abuse in calm threads, context-needed cruelty). It is never trained on. A context model is served only if it wrongly flags **≤ 25 %** of the safe replies and catches **≥ 75 %** of the harmful messages. Because the gate decides serving, challenge numbers are not an unbiased test.
+
+### Results (held-out test; threshold and epoch chosen on validation)
+
+| Run | Variant | Public test macro-F1 | DiaSafety F1 | CCC flips acc. | Challenge false flags | Challenge detection | Synthetic held-out F1 |
+|---|---|---|---|---|---|---|---|
+| 1 | Phase 2 model, no extra training | 0.692 | 0.375 | 0.269 | 0.00 | 0.83 | 0.687 |
+| 1 | Message-only | 0.889 | 0.740 | 0.778 | — | — | — |
+| 1 | Context + speaker tags | 0.901 | 0.798 | 0.838 | 0.30\* | 0.58\* | — |
+| 2 | + counterfactual pairs | 0.897 | 0.799 | 0.833 | 0.35 | 0.67 | — |
+| 3 | + 20k general comments replayed | 0.897–0.899 | 0.808–0.820 | 0.769–0.796 | 0.10–0.30 | 0.50–0.58 | — |
+| **4** | **Message-only + synthetic** | 0.889 | 0.747 | 0.810 | 0.20 | 0.83 | 0.794 |
+| **4** | **Context + tags + counterfactual + synthetic (served)** | 0.895 | 0.788 | **0.861** | **0.15** | 0.75 | **0.810** |
+| 4 | Same, no speaker tags | 0.895 | 0.789 | 0.843 | 0.10 | 0.75 | 0.791 |
+
+\* measured after the run on the saved model. Full numbers: `backend/artifacts/context_evaluation*.json`.
+
+What the runs show:
+
+1. **Context helps on public benchmarks** (macro-F1 0.889 → ~0.90, DiaSafety 0.74 → 0.80, CCC flips 0.78 → 0.83–0.86). CONDA (game chat) gains nothing: toxicity there is visible in the message itself.
+2. **Benchmark gains hid a safety problem.** Models fine-tuned on the public data wrongly flagged 25–35 % of harmless replies such as "please stop, that's not funny" or "leave her alone". Message-only models trained on the same data did too (30 %), so the cause is the labels treating firm pushback as toxic, not only context leaking into the label. Counterfactual pairs (non-toxic message after an unrelated toxic turn, label kept) and replaying general comments did not fix it.
+3. **Synthetic conversations with explicit victim/bystander/banter labels fixed most of it**: false flags 35 % → 15 %, and the context model became the best on CCC flips and on unseen synthetic wording.
+4. **Speaker tags and 1 vs 3 turns of context made no measurable difference** (differences ≤ 0.005, the size of GPU run-to-run noise). Only CONDA has same-speaker turns, so these datasets cannot really test tags.
+5. **Still weak:** "context needed" cruelty (e.g. "serves you right" after bad news) is caught 1 time in 4 on the challenge set, and some friendly banter is still flagged. Results come from one seed; no confidence intervals yet.
+
+### Learned risk combiner
+
+`backend/app/services/combiner.py` turns one analysis into 48 features (share of each rule label, rule signals, targeting pattern, and the three model scores) and a regularised logistic regression maps them to Low / Moderate / High / Critical. It is shown beside the rule-based risk, never instead of it, and refuses to run if the available models differ from those it was trained with.
+
+Trained on 2,400 synthetic conversations, tested on 600 with unseen wording:
+
+| | Accuracy | Macro-F1 | Quadratic κ |
+|---|---|---|---|
+| Rules only | 0.490 | 0.286 | 0.266 |
+| Learned combiner | **0.708** | **0.651** | **0.570** |
+
+The rules miss reworded threats and exclusion completely (0 % on those scenarios: "you'd better be scared" is read as harmless), which is the brittleness of hand-written patterns. The combiner fixes much of that (targeting 38 % → 92 %, single insults 58 % → 98 %) but over-flags friendly banter (100 % → 63 %) and is still poor on threats (36 %) and context-needed cruelty (13 %). Its cross-validation score on the training phrases (0.95) is inflated because the context model saw those conversations; quote the held-out numbers.
+
+### Next step: real labelled conversations
+
+Collect and label ~300 real conversations with `annotation/GUIDELINES.md` and `python -m backend.training.annotate` (two annotators, Cohen's κ). Then retrain the combiner with `python -m backend.training.train_combiner` on `annotation/gold.jsonl` and use it as the final test set for every model above. Until then, all conversation-level numbers rest on synthetic data.
 
 ## WhatsApp text import and report
 

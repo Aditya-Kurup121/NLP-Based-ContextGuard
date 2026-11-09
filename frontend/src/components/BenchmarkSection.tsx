@@ -45,10 +45,10 @@ export const BenchmarkSection: React.FC = () => {
           </div>
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-stone-900">
-              Automated Benchmark Evaluation & Metrics
+              Regression Examples
             </h2>
             <p className="text-xs sm:text-sm text-stone-600">
-              Demonstration benchmark using 10 curated synthetic conversations. Results do not establish performance on unseen real-world conversations.
+              A sanity check on 10 hand-written synthetic conversations that the rules were developed against. It is not an evaluation: scores here say nothing about performance on unseen conversations. See Language lab → Model evidence for the held-out evaluation.
             </p>
           </div>
         </div>
@@ -66,7 +66,7 @@ export const BenchmarkSection: React.FC = () => {
           ) : (
             <>
               <Play className="w-4 h-4 fill-white" />
-              <span>Re-Run Benchmark</span>
+              <span>Re-Run Examples</span>
             </>
           )}
         </button>
@@ -84,7 +84,7 @@ export const BenchmarkSection: React.FC = () => {
           {/* Summary KPI Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="glass-panel p-5 rounded-2xl border border-stone-200">
-              <span className="text-xs text-stone-600 block uppercase font-mono mb-1">Total Test Samples</span>
+              <span className="text-xs text-stone-600 block uppercase font-mono mb-1">Regression Examples</span>
               <span className="text-3xl font-extrabold font-mono text-stone-900">
                 {benchmarkData.total_test_samples}
               </span>
@@ -92,7 +92,7 @@ export const BenchmarkSection: React.FC = () => {
             </div>
 
             <div className="glass-panel p-5 rounded-2xl border border-stone-200">
-              <span className="text-xs text-stone-600 block uppercase font-mono mb-1">Overall Accuracy</span>
+              <span className="text-xs text-stone-600 block uppercase font-mono mb-1">Examples Passing</span>
               <span className="text-3xl font-extrabold font-mono text-emerald-700">
                 {(benchmarkData.overall_accuracy * 100).toFixed(1)}%
               </span>

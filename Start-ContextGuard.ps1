@@ -3,8 +3,8 @@ $ErrorActionPreference = 'Stop'
 $projectDirectory = $PSScriptRoot
 $frontendDirectory = Join-Path $projectDirectory 'frontend'
 $pythonExecutable = Join-Path $projectDirectory '.venv\Scripts\python.exe'
-$bundledNode = Join-Path $env:USERPROFILE '.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe'
-$nodeExecutable = if (Test-Path -LiteralPath $bundledNode) { $bundledNode } else { (Get-Command node -ErrorAction Stop).Source }
+$nodeExecutable = (Get-Command node -ErrorAction Stop).Source
+if (!(Test-Path -LiteralPath (Join-Path $frontendDirectory 'node_modules'))) { throw 'Run "npm install" in the frontend folder first.' }
 if (!(Test-Path -LiteralPath $pythonExecutable)) { throw 'Create .venv and install backend/requirements.txt first. See NLP_GUIDE.md.' }
 
 function Test-PreviewEndpoint([string]$Url) {

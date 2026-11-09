@@ -7,6 +7,11 @@ LAUGHTER_REGEX = re.compile(
     r'\b(haha+|hehe+|lmao+|lol+|rofl+|lmfao+|xd+|kek|jk|j\/k|just kidding)\b',
     re.IGNORECASE
 )
+# Competitive/playful challenge phrasing common in gaming and sports banter
+PLAYFUL_CHALLENGE_REGEX = re.compile(
+    r"\b(rematch|1v1|one\s+v\s+one|run\s+it\s+back|round\s+two|bring\s+it\s+on|you'?re\s+on)\b",
+    re.IGNORECASE
+)
 PLAYFUL_EMOJIS = set("\U0001f602\U0001f923\U0001f606\U0001f61c\U0001f480\U0001f609\U0001f921\U0001f525\U0001f44c\U0001f60f")
 
 # Exclusion markers (systemic group rejection — overt)
@@ -198,9 +203,9 @@ BYSTANDER_DEFENSE_PATTERNS = [
     re.compile(r"\bleave\s+(her|him|them|\w+)\s+alone\b", re.IGNORECASE),
     re.compile(r"\bjust\s+leave\s+\w+\s+alone\b", re.IGNORECASE),
     re.compile(r"\b(come\s+on|cut\s+it\s+out|that[\'\u2019]?s?\s+enough|enough\s+is\s+enough|enough\s+already)\b", re.IGNORECASE),
-    # Defending target's contributions: "Sam has done a lot of work on this project", "Aarav is literally assigned to our team"
-    re.compile(r"\b(he|she|they|\w+)\s+has\s+done\s+a\s+lot\s+of\s+work\b", re.IGNORECASE),
-    re.compile(r"\b(he|she|they|\w+)\s+(worked\s+(just\s+as\s+hard|hard)|contributed\s+a\s+lot|deserves\s+to\s+be|is\s+literally\s+assigned|is\s+part\s+of\s+(the|our)\s+team)\b", re.IGNORECASE),
+    # Defending the target's contributions or membership ("X has done a lot of work", "X is assigned to our team")
+    re.compile(r"\b(he|she|they|\w+)\s+(has|have)\s+(done|put\s+in)\s+(a\s+lot\s+of|so\s+much)\s+(work|effort)\b", re.IGNORECASE),
+    re.compile(r"\b(he|she|they|\w+)\s+(worked\s+(just\s+as\s+hard|hard)|contributed\s+a\s+lot|deserves\s+to\s+be|is\s+(literally\s+|actually\s+)?(assigned\s+to|part\s+of|a\s+member\s+of)\s+(the|our|this)\s+(team|group|project))\b", re.IGNORECASE),
 ]
 
 # Defender challenge — attempting to silence someone who is defending the target
@@ -267,6 +272,7 @@ class ExtractedFeatures:
         self.text_lower = msg.text.lower()
         self.has_laughter = bool(LAUGHTER_REGEX.search(self.text_lower))
         self.has_playful_emoji = any(c in PLAYFUL_EMOJIS for c in msg.text)
+        self.has_playful_challenge = bool(PLAYFUL_CHALLENGE_REGEX.search(self.text_lower))
         self.has_exclusion = any(p.search(self.text_lower) for p in EXCLUSION_PATTERNS)
 
         # Subtle / covert exclusion signals

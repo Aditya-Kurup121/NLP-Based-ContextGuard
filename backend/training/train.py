@@ -77,10 +77,6 @@ def train(data_dir=ROOT / "data" / "raw", output_dir=ROOT / "artifacts"):
             ("vectorizer", CountVectorizer(ngram_range=(1, 1), max_features=30000)),
             ("classifier", MultinomialNB(alpha=1.0)),
         ]),
-        "tfidf_naive_bayes": Pipeline([
-            ("vectorizer", TfidfVectorizer(ngram_range=(1, 2), max_features=30000, sublinear_tf=True)),
-            ("classifier", MultinomialNB(alpha=1.0)),
-        ]),
         "tfidf_logistic_regression": Pipeline([
             ("vectorizer", TfidfVectorizer(ngram_range=(1, 2), max_features=30000, sublinear_tf=True)),
             ("classifier", LogisticRegression(max_iter=600, class_weight="balanced", random_state=42)),

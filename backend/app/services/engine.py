@@ -15,6 +15,8 @@ from backend.app.schemas.analysis import (
 )
 from backend.app.services.parser import parse_conversation, ParsedMessage
 from backend.app.services.nlp import classify_texts, classifier
+from backend.app.services.combiner import learned_risk
+from backend.app.services.transformer import classify_conversation_context, classify_texts_transformer, transformer_status
 from backend.app.services.features import (
     extract_all_features,
     infer_message_targets,
@@ -32,12 +34,11 @@ class ContextGuardAnalysisEngine:
     def __init__(self):
         self.engine_name = "ContextGuard Hybrid Dialogue NLP Engine"
         self.version = "1.2.0"
-        self.transformer_available = False
-        self._init_transformer_pipeline()
 
-    def _init_transformer_pipeline(self):
-        # No local transformer is loaded. A package import is not model availability.
-        self.transformer_available = False
+    @property
+    def transformer_available(self) -> bool:
+        # True only when the fine-tuned weights actually load, not merely when torch is installed.
+        return transformer_status()["loaded"]
 
     def analyze(self, request: AnalyzeRequest) -> AnalyzeResponse:
         return self.analyze_messages(parse_conversation(request.conversation), request.context)
@@ -49,6 +50,8 @@ class ContextGuardAnalysisEngine:
 
         features_list = extract_all_features(parsed_messages)
         statistical_results = classify_texts([message.text for message in parsed_messages])
+        transformer_results = classify_texts_transformer([message.text for message in parsed_messages])
+        context_results = classify_conversation_context([m.speaker for m in parsed_messages], [m.text for m in parsed_messages])
         sender_target_pairs = infer_message_targets(parsed_messages)
         total_msgs = len(parsed_messages)
 
@@ -140,6 +143,8 @@ class ContextGuardAnalysisEngine:
                     suggested_action=action,
                     signals=signals,
                     statistical_assessment=statistical_results[idx],
+                    transformer_assessment=transformer_results[idx],
+                    context_assessment=context_results[idx],
                 )
             )
 
@@ -257,7 +262,7 @@ class ContextGuardAnalysisEngine:
             engine_type="Context rules with a separately reported trained comment classifier" if classifier() is not None else "Multi-turn dialogue rules",
             execution_mode="Local analysis; hosted review requires a separate explicit request",
             description="Analyzes conversational history, turn-taking reciprocity, sarcasm markers, and targeting asymmetry.",
-            transparency_notes="Conversation risk is rule-based. The trained classifier estimates standalone comment toxicity separately and does not override conversation risk. Neither score is statistically calibrated."
+            transparency_notes="Conversation risk is rule-based. The trained classifiers (TF-IDF model and, when installed, fine-tuned DistilBERT) estimate standalone comment toxicity separately and do not override conversation risk. No score is statistically calibrated."
         )
 
         limitations = [
@@ -267,7 +272,7 @@ class ContextGuardAnalysisEngine:
             "Not for Disciplinary Automation: Never use this tool as the sole basis for sanctioning or disciplinary actions without human review."
         ]
 
-        return AnalyzeResponse(
+        response = AnalyzeResponse(
             conversation_summary=risk_summary,
             overall_risk=overall_risk,
             risk_score=estimated_risk_score,
@@ -280,6 +285,9 @@ class ContextGuardAnalysisEngine:
             model_info=model_info,
             limitations=limitations
         )
+        # Optional: risk from the combiner trained on human-labelled conversations.
+        response.learned_risk = learned_risk(response)
+        return response
 
     def _check_reciprocal_laughter(self, features: List[ExtractedFeatures], msgs: List[ParsedMessage]) -> bool:
         """Determines if multiple distinct speakers share laughter or playful banter emojis."""
@@ -361,7 +369,7 @@ class ContextGuardAnalysisEngine:
         has_prior_laughter = (prev_feat and (prev_feat.has_laughter or prev_feat.has_playful_emoji))
 
         if not feat.has_direct_threat and not feat.has_confrontation and not is_severe_or_unilateral:
-            if is_teasing_with_laughter or (has_reciprocal_laughter and (feat.has_sarcasm_praise or feat.has_laughter or "rematch" in feat.text_lower or "nobel" in feat.text_lower)):
+            if is_teasing_with_laughter or (has_reciprocal_laughter and (feat.has_sarcasm_praise or feat.has_laughter or feat.has_playful_challenge)):
                 signals.is_reciprocal_tease = True
                 evidence.append("Playful banter cues present (laughter expressions, laughing emojis, or self-deprecating humor).")
                 if has_subsequent_laughter or has_prior_laughter:

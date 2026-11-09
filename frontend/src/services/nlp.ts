@@ -97,6 +97,7 @@ export interface Word2VecStatus {
   sample_words: string[];
   method: string;
   default_corpus_sample?: string[];
+  model_id?: string;
 }
 
 export interface WordNeighbor {

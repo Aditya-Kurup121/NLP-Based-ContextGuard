@@ -4,7 +4,7 @@ Current setup and reproducible experiments: [NLP guide](NLP_GUIDE.md). Start bot
 
 **WhatsApp import:** open Import WhatsApp to preview a text export, mask participant names, review discussion sessions and source-linked concern episodes, and download an HTML/Markdown report. Parsing warnings and exclusions remain visible. The importer uses local extraction and risk analysis; no API key or hosted model is needed. See the guide for input limits and supported formats.
 
-The Language lab provides POS/NER, word/character/WordPiece/BPE tokenization, stemming/lemmatization, manual BoW/TF-IDF, and held-out classifier comparisons. Conversation risk is rule-based; learned comment toxicity is shown separately. The selected Logistic Regression model achieves test macro-F1 **0.724**, toxic precision **0.422**, and toxic recall **0.621** on **49,757** held-out public comments. The optional hosted LLM second opinion needs backend credentials and explicit user consent; no live hosted call has been verified.
+The Language lab provides POS/NER, word/character/WordPiece/BPE tokenization, stemming/lemmatization, manual BoW/TF-IDF, and held-out classifier comparisons. Conversation risk is rule-based; learned comment toxicity is shown separately. On **49,757** held-out public comments, a fine-tuned **DistilBERT** reaches test macro-F1 **0.801** (toxic precision **0.634**, recall **0.632**), up from **0.724** for the TF-IDF Logistic Regression baseline (precision 0.422, recall 0.621). Both models score messages one at a time and are shown beside the rule-based conversation risk; neither overrides it. A **context-aware DistilBERT** also reads each message with its previous 3 turns (trained on CCC, CONDA, DiaSafety and synthetic conversations; served only after passing a 32-case behaviour test), and a **learned risk combiner** gives a second-opinion risk level. Both currently rest partly on synthetic data — see the NLP guide. The optional hosted LLM second opinion needs backend credentials and explicit user consent; no live hosted call has been verified.
 
 > **"Understand the context. Detect the harm."**
 
@@ -30,13 +30,13 @@ ContextGuard processes conversational dynamics across sequential dialogue turns:
 ## 2. System Architecture
 
 ```text
-D:\FSD\NLP-Based-ContextGuard-main\
+NLP-Based-ContextGuard/
 ├── backend/
 │   ├── app/
 │   │   ├── api/
 │   │   │   ├── routes.py         # REST endpoints (health, examples, analyze, evaluate, model-info)
 │   │   │   ├── nlp_routes.py     # NLP workbench API (inspect, vectorize, Levenshtein, Word2Vec, HMM)
-│   │   │   └── imports_routes.py # WhatsApp chat export preview and report API
+│   │   │   └── import_routes.py  # WhatsApp chat export preview and report API
 │   │   ├── schemas/
 │   │   │   └── analysis.py       # Pydantic request, response, and metric schemas
 │   │   ├── services/
@@ -49,6 +49,7 @@ D:\FSD\NLP-Based-ContextGuard-main\
 │   │   │   ├── hmm_tagger.py     # First-order HMM POS tagger with Laplace smoothing & Viterbi decoding
 │   │   │   ├── evaluator.py      # Automated benchmark & confusion matrix generator
 │   │   │   ├── hosted.py         # Hugging Face hosted review with schema validation & quote checking
+│   │   │   ├── transformer.py    # Fine-tuned DistilBERT toxicity scoring (optional, loads if trained)
 │   │   │   └── whatsapp.py       # WhatsApp chat parser, sessionizer, anonymizer, and report generator
 │   │   └── main.py               # FastAPI application entry point with CORS
 │   ├── artifacts/                # Trained model joblibs, tokenizers, evaluation.json
@@ -101,13 +102,12 @@ D:\FSD\NLP-Based-ContextGuard-main\
 
 ### Step A: Start Backend Server
 
-1. Open a terminal in the project root:
-   ```powershell
-   cd D:\FSD\NLP-Based-ContextGuard-main
-   ```
+1. Open a terminal in the project root (the folder containing this README).
 
-2. Activate virtual environment (or create one):
+2. Create and activate a virtual environment, then install dependencies:
    ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r backend\requirements.lock
    .\.venv\Scripts\Activate.ps1
    # Or on Linux/macOS: source .venv/bin/activate
    ```
@@ -125,13 +125,11 @@ Backend will be active at:
 
 ### Step B: Start Frontend Development Server
 
-1. Open a second terminal:
-   ```powershell
-   cd D:\FSD\NLP-Based-ContextGuard-main\frontend
-   ```
+1. Open a second terminal in the `frontend` folder.
 
-2. Start Vite dev server:
+2. Install packages and start the Vite dev server:
    ```powershell
+   npm install
    npm run dev
    ```
 
@@ -149,7 +147,7 @@ Backend will be active at:
 | **CO1** | Text Preprocessing | Text noise cleaning (HTML, zero-width chars), NFKC Unicode normalization, URL/email tokenization, sentence splitting, word/character/BPE/WordPiece subword tokenization, stopword removal with negation preservation, Porter & Lancaster stemming vs spaCy lemmatization. |
 | **CO2** | Feature Extraction & Word Representations | Handcrafted conversation features (laughter, hostility, targeting), N-grams (1, 2, 3), Levenshtein dynamic programming edit distance with backtrace matrix, manual Bag-of-Words and smoothed TF-IDF matrices, and NumPy Skip-gram Word2Vec (SGNS) embeddings with cosine similarity, nearest neighbors, analogies, and custom corpus retraining. |
 | **CO3** | POS Tagging & NER | Dual POS tagging: industrial spaCy (`en_core_web_sm`) alongside an educational from-scratch First-Order Hidden Markov Model (HMM) tagger with Laplace smoothing and Viterbi dynamic programming decoding; plus spaCy Named Entity Recognition (PERSON, ORG, GPE, DATE). |
-| **CO4** | Text Classification & Evaluation | From-scratch Multinomial Naive Bayes, scikit-learn Naive Bayes, and TF-IDF Logistic Regression trained on held-out data; model performance evaluation (accuracy, precision, recall, macro-F1, confusion matrix, majority baseline); integrated into ContextGuard's 13-turn contextual cyberbullying detection engine. |
+| **CO4** | Text Classification & Evaluation | From-scratch Multinomial Naive Bayes, scikit-learn Naive Bayes, TF-IDF Logistic Regression, and a fine-tuned DistilBERT transformer (macro-F1 0.801 vs 0.724), all compared on the same held-out split; model performance evaluation (accuracy, precision, recall, macro-F1, confusion matrix, majority baseline); integrated into ContextGuard's 13-turn contextual cyberbullying detection engine. |
 | **CO5** | LLM Integration & Deployment | Hugging Face Chat Completion API integration for second-opinion review with explicit consent gating, structured Pydantic schema validation, evidence quotation verification, and graceful unconfigured fallbacks; complete local and production deployment via FastAPI and Vite. |
 
 ---
@@ -174,7 +172,7 @@ Backend will be active at:
 $env:PYTHONPATH="."
 .\.venv\Scripts\pytest -v backend\tests
 ```
-**186 passed tests** covering:
+**193 passed tests** covering:
 - **College Project Cyberbullying Suite (`test_college_project_regression.py`):** 15-turn multi-turn exclusion, personal degradation, stop request boundary assertions, distress signals, bystander intervention, retaliatory social intimidation, and benign counterexamples
 - **CO Coverage Suite (`test_co_coverage.py`):** Noise cleaning, normalization, negation preservation, Levenshtein DP edit distance, Word2Vec embeddings and analogies, HMM Viterbi POS tagging, classifier status, and banter/threat boundary verification
 - **Parser formats (`test_parser.py`):** Standard colon, timestamps, brackets, multiline continuations, unlabeled blocks
@@ -190,7 +188,7 @@ $env:PYTHONPATH="."
 $env:PYTHONPATH="."
 .\.venv\Scripts\python -m backend.app.services.evaluator
 ```
-Reports metrics on 10 curated synthetic demonstration conversations. These are regression examples; use Language lab → Model evidence for the separate held-out public-comment evaluation.
+Reports metrics on 10 curated synthetic regression examples (the "Regression examples" tab in the app). They are not an evaluation; use Language lab → Model evidence for the separate held-out public-comment evaluation.
 
 ### Build Frontend Production Bundle
 ```powershell
@@ -200,7 +198,7 @@ npm run build
 
 ---
 
-## 6. Privacy, Ethics & Decision-Support Standard
+## 7. Privacy, Ethics & Decision-Support Standard
 
 - **Local by default:** Conversation review and the language lab run on the configured local backend without sending text to a model provider. The separate hosted-review action sends only the displayed transcript to Hugging Face after explicit consent.
 - **Decision-Support Guardrail:** ContextGuard provides risk estimates and plain-English indicators to assist human discernment; it **must never be used as an automated judge for unilateral disciplinary expulsion**.

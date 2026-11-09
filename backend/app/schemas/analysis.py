@@ -41,6 +41,8 @@ class MessageAnalysis(BaseModel):
     suggested_action: str
     signals: MessageSignal
     statistical_assessment: Optional[Dict[str, Any]] = None
+    transformer_assessment: Optional[Dict[str, Any]] = None
+    context_assessment: Optional[Dict[str, Any]] = None
 
 class ParticipantInfo(BaseModel):
     name: str
@@ -85,6 +87,7 @@ class AnalyzeResponse(BaseModel):
     recommendations: List[str]
     model_info: ModelInfo
     limitations: List[str]
+    learned_risk: Optional[Dict[str, Any]] = None
 
 class ExampleConversation(BaseModel):
     id: str

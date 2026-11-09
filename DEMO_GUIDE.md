@@ -140,11 +140,12 @@ Click **Language Lab** in the navigation bar.
 #### 5. Tab 05 / Classification Benchmark (CO4)
 - View the held-out validation and test evaluation table:
   - **Baseline:** Majority class baseline.
-  - **From-Scratch Naive Bayes:** BoW manual implementation ($F_1 = 0.681$).
-  - **Scikit-Learn Naive Bayes:** BoW Gaussian/Multinomial ($F_1 = 0.681$).
-  - **TF-IDF Logistic Regression (Selected):** Test Accuracy: $90.3\%$, Macro-$F_1$: $0.724$.
+  - **From-Scratch Naive Bayes:** BoW manual implementation ($F_1 = 0.667$).
+  - **Scikit-Learn Naive Bayes:** BoW Multinomial ($F_1 = 0.667$, identical — validates the from-scratch version).
+  - **TF-IDF Logistic Regression:** Test Accuracy: $90.3\%$, Macro-$F_1$: $0.724$.
+  - **DistilBERT fine-tuned (Selected):** Test Accuracy: $94.2\%$, Macro-$F_1$: $0.801$, toxic precision $63.4\%$, recall $63.2\%$.
 - View the **Confusion Matrix** (True Negatives, False Positives, False Negatives, True Positives).
-- **Key Talking Point:** Explain why accuracy ($90.3\%$) is lower than the majority baseline ($91.8\%$) — because cyberbullying is highly imbalanced, and our model prioritizes **toxic recall ($62.1\%$)** over naive majority prediction.
+- **Key Talking Point:** TF-IDF Logistic Regression's accuracy ($90.3\%$) is below the majority baseline ($92.1\%$) because toxicity is imbalanced and it trades false positives for toxic recall. The fine-tuned transformer beats the baseline on every metric and cuts false alarms (precision $42\% 	o 63\%$) at the same recall — contextual word representations, not just word counts.
 
 #### 6. Tab 06 / Hosted LLM Review (CO5)
 - Show the consent-gated interface: external API calls require explicit operator consent.

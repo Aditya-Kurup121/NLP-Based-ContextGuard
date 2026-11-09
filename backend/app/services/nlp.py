@@ -8,8 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from backend.app.services.hmm_tagger import get_hmm_tagger
-from backend.app.services.word2vec import get_word2vec_model, retrain_word2vec_model
-from backend.app.services.levenshtein import compute_levenshtein
+from backend.app.services.transformer import classify_texts_transformer
 
 ARTIFACTS = Path(__file__).resolve().parents[2] / "artifacts"
 
@@ -230,6 +229,7 @@ def inspect_text(text: str):
         "linguistic_model": "en_core_web_sm" if nlp else None,
         "linguistic_status": "loaded" if nlp else "Install the en_core_web_sm model for POS, lemmas and NER.",
         "classifier": classify_texts([text])[0],
+        "transformer": classify_texts_transformer([text])[0],
         "notes": [
             "NER uses the original text, not lowercased text.",
             "Stopword filtering explicitly preserves negation ('not', 'never', 'n\\'t') to prevent polarity inversion.",

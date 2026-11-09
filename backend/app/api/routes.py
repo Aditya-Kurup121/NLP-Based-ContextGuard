@@ -87,7 +87,7 @@ def get_model_info():
             "Targeting Asymmetry Matrix (Who targets whom)",
             "Systematic Exclusion vs Isolated Irritation Distinction",
             "Rule-assigned Uncertainty & Explainable Evidence",
-            "BoW / TF-IDF Naive Bayes and Logistic Regression comparisons",
+            "BoW Naive Bayes and TF-IDF Logistic Regression comparisons",
             "spaCy POS, NER and dependency inspection"
         ],
         "licensing": "MIT License - Open Academic & Assistive Research",

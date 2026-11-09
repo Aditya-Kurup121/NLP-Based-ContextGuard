@@ -32,6 +32,21 @@ export interface MessageAnalysis {
     top_features: Array<{ term: string; contribution: number }>;
     note: string;
   } | null;
+  transformer_assessment?: {
+    label: string;
+    toxicity_score: number;
+    threshold: number;
+    model: string;
+    note: string;
+  } | null;
+  context_assessment?: {
+    label: string;
+    toxicity_score: number;
+    threshold: number;
+    context_turns_used: number;
+    model: string;
+    note: string;
+  } | null;
   id: number;
   speaker: string;
   target?: string;
@@ -100,6 +115,12 @@ export interface AnalyzeResponse {
   recommendations: string[];
   model_info: ModelInfo;
   limitations: string[];
+  learned_risk?: {
+    risk: "Low" | "Moderate" | "High" | "Critical";
+    probabilities: Record<string, number>;
+    trained_on: { conversations: number; label_counts: Record<string, number>; source: string };
+    note: string;
+  } | null;
 }
 
 export interface ExampleConversation {

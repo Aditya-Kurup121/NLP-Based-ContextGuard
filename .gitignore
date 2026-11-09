@@ -30,3 +30,14 @@ Thumbs.db
 backend/data/raw/
 backend/artifacts/*.joblib
 backend/artifacts/*.tokenizer.json
+
+# Fine-tuned transformer weights (regenerate with backend.training.train_transformer)
+backend/artifacts/transformer/
+backend/data/processed/
+
+# Private conversation data for labelling (never commit)
+annotation/raw/
+annotation/*.jsonl
+# Context-model weights (regenerate with backend.training.train_context)
+backend/artifacts/context_model*/
+backend/artifacts/combiner.joblib
